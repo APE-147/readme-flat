@@ -89,8 +89,8 @@ config/production_config.yaml
 /Users/
 ~/
 # Specific user paths
-**/niceday/**
-**/xddd9485@gmail.com
+**/user/**
+**/*@*.com
 
 # Temporary and cache files
 cache/
