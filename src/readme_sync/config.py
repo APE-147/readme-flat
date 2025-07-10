@@ -31,7 +31,7 @@ class ConfigManager:
             "sync_settings": {
                 "conflict_resolution": "latest",  # latest, manual, source_priority, target_priority
                 "tolerance_seconds": 5,           # 时间容忍度
-                "auto_sync_interval": 300,        # 自动同步间隔(秒)
+                "auto_sync_interval": 1,          # 自动同步间隔(秒)
             },
             "naming_rules": {
                 "pattern": "{project_name}-README",  # 命名模式
@@ -213,7 +213,7 @@ class ConfigManager:
     
     def get_auto_sync_interval(self) -> int:
         """获取自动同步间隔"""
-        return self.get("sync_settings.auto_sync_interval", 300)
+        return self.get("sync_settings.auto_sync_interval", 1)
     
     def validate_config(self) -> List[str]:
         """验证配置有效性，返回错误列表"""

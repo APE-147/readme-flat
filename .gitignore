@@ -88,6 +88,9 @@ config/production_config.yaml
 # User data directories
 /Users/
 ~/
+# Specific user paths
+**/niceday/**
+**/xddd9485@gmail.com
 
 # Temporary and cache files
 cache/
