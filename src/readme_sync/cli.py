@@ -115,8 +115,9 @@ def set_target(folder_path):
 
 
 @cli.command()
-@click.option('--reverse', is_flag=True, help='从目标同步到源文件夹')
-def sync(reverse):
+@click.option('--reverse', is_flag=True, help='从目标同步到源文件夹（谨慎使用）')
+@click.option('--force', is_flag=True, help='强制反向同步，跳过安全确认')
+def sync(reverse, force):
     """执行同步操作"""
     config = ConfigManager()
     db = DatabaseManager()
@@ -134,6 +135,14 @@ def sync(reverse):
     # 执行同步
     try:
         if reverse:
+            # 反向同步安全确认
+            if not force:
+                click.echo("⚠️  警告：反向同步会将目标文件夹的内容覆盖到源文件夹")
+                click.echo("这可能会覆盖您在源项目中的修改！")
+                if not click.confirm("确定要继续吗？"):
+                    click.echo("已取消反向同步")
+                    return
+            
             results = engine.reverse_sync_from_target()
             click.echo(f"\n反向同步完成:")
         else:
@@ -560,6 +569,247 @@ def autostart_restart():
         click.echo("✓ 开机自启动服务已重启")
     else:
         click.echo("✗ 重启开机自启动服务失败")
+
+
+@cli.group()
+def conflicts():
+    """冲突管理"""
+    pass
+
+
+@conflicts.command('list')
+def conflicts_list():
+    """列出当前存在的冲突"""
+    config = ConfigManager()
+    db = DatabaseManager()
+    engine = SyncEngine(config, db)
+    
+    click.echo("检查冲突文件...")
+    conflicts = engine.get_conflicts()
+    
+    if not conflicts:
+        click.echo("✓ 当前没有发现冲突")
+        return
+    
+    click.echo(f"发现 {len(conflicts)} 个冲突:")
+    click.echo("=" * 80)
+    
+    for i, conflict in enumerate(conflicts, 1):
+        source_time = datetime.fromtimestamp(conflict['source_mtime'])
+        target_time = datetime.fromtimestamp(conflict['target_mtime'])
+        
+        click.echo(f"\n{i}. 冲突文件:")
+        click.echo(f"   源文件: {conflict['source_path']}")
+        click.echo(f"   目标文件: {conflict['target_path']}")
+        click.echo(f"   源文件修改时间: {source_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        click.echo(f"   目标文件修改时间: {target_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if conflict['source_newer']:
+            click.echo("   ⚠️  源文件更新")
+        elif conflict['target_newer']:
+            click.echo("   ⚠️  目标文件更新")
+        else:
+            click.echo("   ⚠️  修改时间相同")
+    
+    click.echo(f"\n使用 'readme-sync conflicts resolve' 解决冲突")
+
+
+@conflicts.command('resolve')
+@click.option('--strategy', 
+              type=click.Choice(['source', 'target', 'newer', 'interactive']), 
+              default='interactive',
+              help='冲突解决策略')
+def conflicts_resolve(strategy):
+    """解决冲突"""
+    config = ConfigManager()
+    db = DatabaseManager()
+    engine = SyncEngine(config, db)
+    
+    conflicts = engine.get_conflicts()
+    
+    if not conflicts:
+        click.echo("✓ 当前没有发现冲突")
+        return
+    
+    click.echo(f"发现 {len(conflicts)} 个冲突，使用策略: {strategy}")
+    resolved = 0
+    skipped = 0
+    
+    for i, conflict in enumerate(conflicts, 1):
+        source_path = conflict['source_path']
+        target_path = conflict['target_path']
+        
+        click.echo(f"\n处理冲突 {i}/{len(conflicts)}:")
+        click.echo(f"源文件: {source_path}")
+        click.echo(f"目标文件: {target_path}")
+        
+        if strategy == 'interactive':
+            # 交互式解决
+            source_time = datetime.fromtimestamp(conflict['source_mtime'])
+            target_time = datetime.fromtimestamp(conflict['target_mtime'])
+            
+            click.echo(f"源文件修改时间: {source_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            click.echo(f"目标文件修改时间: {target_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            choice = click.prompt(
+                "选择解决方案",
+                type=click.Choice(['s', 't', 'skip']),
+                default='skip',
+                show_choices=True,
+                help_option_names=['--help']
+            )
+            
+            if choice == 's':
+                action = 'source_to_target'
+            elif choice == 't':
+                action = 'target_to_source'
+            else:
+                click.echo("跳过此冲突")
+                skipped += 1
+                continue
+        
+        elif strategy == 'source':
+            action = 'source_to_target'
+        elif strategy == 'target':
+            action = 'target_to_source'
+        elif strategy == 'newer':
+            if conflict['source_newer']:
+                action = 'source_to_target'
+            elif conflict['target_newer']:
+                action = 'target_to_source'
+            else:
+                click.echo("时间相同，跳过")
+                skipped += 1
+                continue
+        
+        # 执行解决
+        try:
+            if action == 'source_to_target':
+                project_name = engine.scanner.extract_project_name(source_path)
+                target_filename = engine.scanner.generate_target_filename(project_name)
+                result = engine._perform_sync(source_path, target_path, project_name, target_filename, 'source_to_target')
+                click.echo("✓ 已使用源文件覆盖目标文件")
+            elif action == 'target_to_source':
+                if engine.force_sync_target_to_source(target_path):
+                    click.echo("✓ 已使用目标文件覆盖源文件")
+                else:
+                    click.echo("✗ 反向同步失败")
+                    continue
+            
+            resolved += 1
+        
+        except Exception as e:
+            click.echo(f"✗ 解决冲突失败: {e}")
+    
+    click.echo(f"\n冲突解决完成: 解决 {resolved} 个, 跳过 {skipped} 个")
+
+
+@conflicts.command('force-target-to-source')
+@click.argument('target_path')
+def conflicts_force_target_to_source(target_path):
+    """强制将指定目标文件同步到源文件"""
+    config = ConfigManager()
+    db = DatabaseManager()
+    engine = SyncEngine(config, db)
+    
+    if not os.path.exists(target_path):
+        click.echo(f"✗ 目标文件不存在: {target_path}")
+        return
+    
+    click.echo(f"强制同步目标文件到源文件: {target_path}")
+    
+    if engine.force_sync_target_to_source(target_path):
+        click.echo("✓ 强制同步成功")
+    else:
+        click.echo("✗ 强制同步失败")
+
+
+@cli.command()
+@click.option('--dry-run', is_flag=True, help='仅显示需要同步的文件，不执行实际同步')
+def smart_sync(dry_run):
+    """智能增量同步 - 安全地同步用户在Obsidian中的修改"""
+    config = ConfigManager()
+    db = DatabaseManager()
+    engine = SyncEngine(config, db)
+    
+    # 验证配置
+    errors = config.validate_config()
+    if errors:
+        click.echo("配置验证失败:")
+        for error in errors:
+            click.echo(f"  ✗ {error}")
+        return
+    
+    click.echo("开始智能增量同步...")
+    
+    try:
+        # 扫描目标文件夹，查找用户修改
+        target_files = engine.scanner.scan_target_folder()
+        pending_syncs = []
+        
+        for target_file in target_files:
+            target_path = target_file['target_path']
+            
+            # 查找对应的源文件映射
+            mapping = engine.db.find_mapping_by_target(target_path)
+            if not mapping:
+                continue
+            
+            source_path = mapping['source_path']
+            if not os.path.exists(source_path):
+                continue
+            
+            # 使用智能策略判断是否需要同步
+            sync_action = engine._determine_sync_action(source_path, target_path, mapping)
+            
+            if sync_action == 'target_to_source':
+                pending_syncs.append({
+                    'source_path': source_path,
+                    'target_path': target_path,
+                    'mapping': mapping
+                })
+        
+        if not pending_syncs:
+            click.echo("✓ 没有检测到需要反向同步的文件")
+            return
+        
+        click.echo(f"检测到 {len(pending_syncs)} 个文件需要反向同步:")
+        for sync in pending_syncs:
+            click.echo(f"  {sync['target_path']} -> {sync['source_path']}")
+        
+        if dry_run:
+            click.echo("\n这是干运行模式，没有执行实际同步")
+            return
+        
+        if not click.confirm(f"\n确定要将这 {len(pending_syncs)} 个文件同步到源项目吗？"):
+            click.echo("已取消同步")
+            return
+        
+        # 执行同步
+        synced = 0
+        errors = 0
+        
+        for sync in pending_syncs:
+            try:
+                result = engine._perform_reverse_sync(
+                    sync['source_path'], 
+                    sync['target_path'], 
+                    sync['mapping']
+                )
+                if result == 'reverse_synced':
+                    synced += 1
+                    click.echo(f"✓ 同步完成: {sync['target_path']}")
+                else:
+                    errors += 1
+                    click.echo(f"✗ 同步失败: {sync['target_path']}")
+            except Exception as e:
+                errors += 1
+                click.echo(f"✗ 同步失败 {sync['target_path']}: {e}")
+        
+        click.echo(f"\n智能增量同步完成: 成功 {synced}, 失败 {errors}")
+    
+    except Exception as e:
+        click.echo(f"✗ 智能同步失败: {e}")
 
 
 if __name__ == '__main__':

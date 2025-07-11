@@ -139,6 +139,10 @@ class ReadmeFileHandler(FileSystemEventHandler):
         if not os.path.exists(source_path):
             return
         
+        # 防循环检查
+        if not self.sync_engine._can_sync(source_path):
+            return
+        
         # 生成文件信息
         project_name = self.sync_engine.scanner.extract_project_name(source_path)
         target_filename = self.sync_engine.scanner.generate_target_filename(project_name)
@@ -154,37 +158,92 @@ class ReadmeFileHandler(FileSystemEventHandler):
         print(f"[实时同步] 源文件同步结果: {result}")
     
     def _handle_target_changed(self, target_path: str):
-        """处理目标文件变化"""
+        """处理目标文件变化 - 智能反向同步"""
         if not os.path.exists(target_path):
+            return
+        
+        # 防循环检查
+        if not self.sync_engine._can_sync(target_path):
             return
         
         # 查找对应的源文件映射
         mapping = self.sync_engine.db.find_mapping_by_target(target_path)
         if not mapping:
-            print(f"[实时同步] 未找到目标文件映射: {target_path}")
-            return
+            # 通过哈希查找
+            file_hash = self.sync_engine.db.get_file_hash(target_path)
+            mapping = self.sync_engine.db.find_mapping_by_hash(file_hash)
+            
+            if not mapping:
+                print(f"[实时同步] 未找到目标文件映射: {target_path}")
+                return
         
         source_path = mapping['source_path']
         if not os.path.exists(source_path):
             print(f"[实时同步] 源文件不存在: {source_path}")
             return
         
-        # 检查是否需要反向同步
+        # 使用智能合并策略决定是否反向同步
         try:
             target_mtime = os.path.getmtime(target_path)
             source_mtime = os.path.getmtime(source_path)
+            target_hash = self.sync_engine.db.get_file_hash(target_path)
+            source_hash = self.sync_engine.db.get_file_hash(source_path)
             
-            if target_mtime > source_mtime:
-                # 目标文件更新，反向同步
+            # 如果内容相同，无需同步
+            if target_hash == source_hash:
+                return
+            
+            # 获取上次同步信息
+            last_sync_source_hash = mapping.get('source_hash')
+            last_sync_target_hash = mapping.get('target_hash')
+            last_sync_time = mapping.get('last_sync_time', 0)
+            
+            # 检查自上次同步以来的变化
+            source_changed = (last_sync_source_hash != source_hash) if last_sync_source_hash else True
+            target_changed = (last_sync_target_hash != target_hash) if last_sync_target_hash else True
+            
+            should_reverse_sync = False
+            
+            if target_changed and not source_changed:
+                # 只有目标文件变化，执行反向同步
+                should_reverse_sync = True
+                print(f"[实时同步] 检测到目标文件独立修改，执行反向同步")
+            elif target_changed and source_changed:
+                # 双方都有变化，检查时间和策略
+                time_since_last_sync = target_mtime - last_sync_time
+                
+                # 如果目标文件是最近修改的（1小时内），优先反向同步
+                if time_since_last_sync > 0 and time_since_last_sync < 3600:  # 1小时
+                    should_reverse_sync = True
+                    print(f"[实时同步] 目标文件最近修改（{time_since_last_sync/60:.1f}分钟前），执行反向同步")
+                elif target_mtime > source_mtime:
+                    # 目标文件更新，执行反向同步
+                    should_reverse_sync = True
+                    print(f"[实时同步] 目标文件更新，执行反向同步")
+            
+            if should_reverse_sync:
+                # 执行反向同步
                 import shutil
                 shutil.copy2(target_path, source_path)
-                print(f"[实时同步] 反向同步: {target_path} -> {source_path}")
+                print(f"[实时同步] 反向同步完成: {target_path} -> {source_path}")
                 
                 # 更新数据库
-                source_hash = self.sync_engine.db.get_file_hash(source_path)
-                target_hash = self.sync_engine.db.get_file_hash(target_path)
-                self.sync_engine.db.update_sync_time(source_path, source_hash, target_hash, 
-                                                   source_mtime, target_mtime)
+                new_source_hash = self.sync_engine.db.get_file_hash(source_path)
+                new_source_mtime = os.path.getmtime(source_path)
+                
+                self.sync_engine.db.update_sync_time(
+                    source_path, new_source_hash, target_hash, 
+                    new_source_mtime, target_mtime
+                )
+                
+                # 更新映射信息
+                self.sync_engine.db.add_file_mapping(
+                    source_path, target_path,
+                    mapping['project_name'], mapping['target_filename']
+                )
+            else:
+                print(f"[实时同步] 根据智能策略，跳过反向同步: {target_path}")
+                
         except Exception as e:
             print(f"[实时同步] 反向同步失败: {e}")
     
