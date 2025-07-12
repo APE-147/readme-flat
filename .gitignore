@@ -101,6 +101,7 @@ temp/
 # Logs
 *.log
 logs/
+.specstory
 
 # Backup files
 *.bak
