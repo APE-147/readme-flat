@@ -20,8 +20,8 @@ class DaemonManager:
         self.config_path = config_path
         
         # 守护进程相关文件路径
-        self.daemon_dir = Path.home() / ".readme-sync"
-        self.daemon_dir.mkdir(exist_ok=True)
+        self.daemon_dir = Path.home() / "Developer" / "Code" / "Script_data" / "readme-sync"
+        self.daemon_dir.mkdir(parents=True, exist_ok=True)
         
         self.pid_file = self.daemon_dir / "daemon.pid"
         self.log_file = self.daemon_dir / "daemon.log"

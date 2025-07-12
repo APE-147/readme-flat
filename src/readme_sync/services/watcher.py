@@ -10,7 +10,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 from .config import ConfigManager
 from .database import DatabaseManager
-from .sync_engine import SyncEngine
+from ..core.sync_engine import SyncEngine
 
 
 class ReadmeFileHandler(FileSystemEventHandler):
@@ -358,9 +358,8 @@ class RealtimeSyncManager:
     
     def run_forever(self):
         """持续运行（用于守护进程）"""
-        self.start()
-        
         if not self.is_running:
+            print("[实时同步] 同步管理器未启动")
             return
         
         try:

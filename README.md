@@ -96,16 +96,34 @@ A powerful **bidirectional README synchronization tool** designed for developers
 
 ## Installation
 
-### Development Installation
+### Quick Installation (Recommended)
 ```bash
-git clone https://github.com/APE-147/readme-flat.git
-cd readme-flat
-pip install -e .
+# Download and run the installation script
+curl -fsSL https://raw.githubusercontent.com/yourusername/readme-sync-manager/main/scripts/install.sh | bash
 ```
 
-### Usage via Python Module
+### Manual Installation
 ```bash
-# Run from project directory
+# Clone the repository
+git clone https://github.com/yourusername/readme-sync-manager.git
+cd readme-sync-manager
+
+# Install with pip
+pip install -e .
+
+# Or install from PyPI (when available)
+pip install readme-sync-manager
+```
+
+### Development Installation
+```bash
+git clone https://github.com/yourusername/readme-sync-manager.git
+cd readme-sync-manager
+
+# Install in development mode with dev dependencies
+pip install -e ".[dev]"
+
+# Run from project directory (alternative method)
 python -m src.readme_sync.cli --help
 ```
 
@@ -113,23 +131,26 @@ python -m src.readme_sync.cli --help
 
 ```bash
 # Initialize configuration
-python -m src.readme_sync.cli init
+readme-sync init
 
 # Add source folders
-python -m src.readme_sync.cli add-source ~/Developer/Projects
-python -m src.readme_sync.cli add-source ~/Code/Repositories
+readme-sync add-source ~/Developer/Projects
+readme-sync add-source ~/Code/Repositories
 
 # Set target folder
-python -m src.readme_sync.cli set-target ~/Documents/README-Collection
+readme-sync set-target ~/Documents/README-Collection
 
 # Manual sync
-python -m src.readme_sync.cli sync
+readme-sync sync
 
 # Start daemon for continuous monitoring
-python -m src.readme_sync.cli daemon start
+readme-sync daemon start
 
 # Check status
-python -m src.readme_sync.cli status
+readme-sync status
+
+# Configure autostart (optional)
+readme-sync autostart
 ```
 
 ## Command Reference
@@ -176,7 +197,7 @@ python -m src.readme_sync.cli status
 
 ## Configuration
 
-Configuration file location: `~/.readme-sync/config.yaml`
+Configuration file location: `~/Developer/Code/Script_data/readme-sync/config.yaml`
 
 ```yaml
 version: "1.0"
@@ -215,18 +236,34 @@ exclusions:
 readme-flat/
 ├── src/readme_sync/
 │   ├── __init__.py          # Package initialization
-│   ├── cli.py               # Command-line interface
-│   ├── config.py            # Configuration management
-│   ├── database.py          # SQLite database operations
-│   ├── scanner.py           # File scanning and project detection
-│   ├── sync_engine.py       # Core synchronization logic
-│   ├── watcher.py           # Real-time file monitoring
-│   ├── daemon.py            # Background daemon process
-│   ├── autostart.py         # System service integration
-│   └── utils.py             # Utility functions
-├── requirements.txt         # Python dependencies
-├── setup.py                # Package setup configuration
-└── README.md               # This file
+│   ├── cli.py               # Typer-based command-line interface
+│   ├── core/                # Core functionality
+│   │   ├── __init__.py
+│   │   ├── sync_engine.py   # Core synchronization logic
+│   │   └── scanner.py       # File scanning and project detection
+│   ├── services/            # Service layer
+│   │   ├── __init__.py
+│   │   ├── config.py        # Configuration management
+│   │   ├── database.py      # SQLite database operations
+│   │   ├── watcher.py       # Real-time file monitoring
+│   │   ├── daemon.py        # Background daemon process
+│   │   └── autostart.py     # System service integration
+│   ├── utils/               # Utility functions
+│   │   └── __init__.py
+│   ├── plugins/             # Plugin system (future extension)
+│   │   └── __init__.py
+│   └── utils.py            # Legacy utility functions
+├── scripts/                 # Installation and deployment scripts
+│   ├── install.sh          # Cross-platform installation script
+│   └── macos/
+│       └── launchd/
+│           └── com.readme-sync.daemon.plist.template
+├── tests/                  # Test files
+├── docs/                   # Documentation
+├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Modern Python packaging configuration
+├── CHANGELOG.md            # Version history and changes
+└── README.md              # This file
 ```
 
 ## Key Features Explained
@@ -262,13 +299,15 @@ The system uses sophisticated logic to extract meaningful project names:
 ## 🛠️ System Requirements
 
 - **Python**: 3.8+ (recommended: 3.9+)
-- **Operating Systems**: macOS, Linux, Windows
+- **Operating Systems**: macOS, Linux, Windows (WSL)
 - **Dependencies**: 
-  - `click` - Command-line interface framework
+  - `typer[all]` - Modern CLI framework with rich output
+  - `rich` - Beautiful terminal formatting and progress bars
   - `pyyaml` - Configuration file parsing
   - `watchdog` - File system monitoring
   - `psutil` - Process and system utilities
-- **Storage**: ~10MB for installation, variable for database (typically <1MB per 1000 files)
+- **Storage**: ~15MB for installation, variable for database (typically <1MB per 1000 files)
+- **Data Directory**: `~/Developer/Code/Script_data/readme-sync/` (automatically created)
 
 ## 🚀 Performance & Reliability
 

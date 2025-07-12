@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.readme-sync.daemon</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_executable}</string>
+        <string>-m</string>
+        <string>readme_sync.cli</string>
+        <string>daemon</string>
+        <string>start</string>
+        <string>--foreground</string>
+    </array>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>{data_dir}/launchd.out</string>
+    
+    <key>StandardErrorPath</key>
+    <string>{data_dir}/launchd.err</string>
+    
+    <key>WorkingDirectory</key>
+    <string>{home_dir}</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{home_dir}/.local/bin</string>
+        <key>HOME</key>
+        <string>{home_dir}</string>
+        <key>USER</key>
+        <string>{username}</string>
+    </dict>
+    
+    <key>ProcessType</key>
+    <string>Background</string>
+    
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+</dict>
+</plist>

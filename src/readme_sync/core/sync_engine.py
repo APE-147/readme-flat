@@ -7,8 +7,8 @@ import time
 import threading
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
-from .config import ConfigManager
-from .database import DatabaseManager
+from ..services.config import ConfigManager
+from ..services.database import DatabaseManager
 from .scanner import FileScanner
 
 

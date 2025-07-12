@@ -15,9 +15,9 @@ class DatabaseManager:
     def __init__(self, db_path: str = None):
         """初始化数据库"""
         if db_path is None:
-            # 默认数据库位置
-            config_dir = Path.home() / ".readme-sync"
-            config_dir.mkdir(exist_ok=True)
+            # 使用新的数据目录路径
+            config_dir = Path.home() / "Developer" / "Code" / "Script_data" / "readme-sync"
+            config_dir.mkdir(parents=True, exist_ok=True)
             db_path = config_dir / "database.db"
         
         self.db_path = db_path

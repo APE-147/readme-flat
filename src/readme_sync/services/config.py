@@ -13,7 +13,8 @@ class ConfigManager:
     def __init__(self, config_path: str = None):
         """初始化配置管理器"""
         if config_path is None:
-            self.config_dir = Path.home() / ".readme-sync"
+            # 使用新的数据目录路径
+            self.config_dir = Path.home() / "Developer" / "Code" / "Script_data" / "readme-sync"
             self.config_path = self.config_dir / "config.yaml"
         else:
             self.config_path = Path(config_path)
