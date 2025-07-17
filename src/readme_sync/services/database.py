@@ -16,7 +16,12 @@ class DatabaseManager:
         """初始化数据库"""
         if db_path is None:
             # 使用新的数据目录路径
-            config_dir = Path.home() / "Developer" / "Code" / "Script_data" / "readme-sync"
+            project_data_dir = os.getenv('PROJECT_DATA_DIR')
+            if project_data_dir:
+                config_dir = Path(project_data_dir)
+            else:
+                # 使用默认的新数据目录结构
+                config_dir = Path.home() / "Developer" / "Code" / "Data" / "srv" / "readme_flat"
             config_dir.mkdir(parents=True, exist_ok=True)
             db_path = config_dir / "database.db"
         
@@ -226,3 +231,30 @@ class DatabaseManager:
                 orphaned_count += 1
         
         return orphaned_count
+    
+    def show_status(self):
+        """显示数据库和同步状态"""
+        try:
+            mappings = self.get_all_mappings()
+            configs = self.get_all_configs()
+            
+            print("\n=== README Sync 状态 ===")
+            print(f"总映射数量: {len(mappings)}")
+            
+            if mappings:
+                print("\n文件映射:")
+                for mapping in mappings[:5]:  # 显示前5个映射
+                    print(f"  {mapping['project_name']}: {mapping['source_path']} -> {mapping['target_path']}")
+                
+                if len(mappings) > 5:
+                    print(f"  ... 还有 {len(mappings) - 5} 个映射")
+            
+            if configs:
+                print("\n配置信息:")
+                for key, value in configs.items():
+                    print(f"  {key}: {value}")
+            
+            print("\n数据库位置:", self.db_path)
+            
+        except Exception as e:
+            print(f"获取状态失败: {e}")

@@ -20,7 +20,12 @@ class DaemonManager:
         self.config_path = config_path
         
         # 守护进程相关文件路径
-        self.daemon_dir = Path.home() / "Developer" / "Code" / "Script_data" / "readme-sync"
+        project_data_dir = os.getenv('PROJECT_DATA_DIR')
+        if project_data_dir:
+            self.daemon_dir = Path(project_data_dir)
+        else:
+            # 使用默认的新数据目录结构
+            self.daemon_dir = Path.home() / "Developer" / "Code" / "Data" / "srv" / "readme_flat"
         self.daemon_dir.mkdir(parents=True, exist_ok=True)
         
         self.pid_file = self.daemon_dir / "daemon.pid"

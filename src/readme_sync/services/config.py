@@ -3,6 +3,7 @@
 
 import os
 import yaml
+import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
@@ -14,13 +15,19 @@ class ConfigManager:
         """初始化配置管理器"""
         if config_path is None:
             # 使用新的数据目录路径
-            self.config_dir = Path.home() / "Developer" / "Code" / "Script_data" / "readme-sync"
+            project_data_dir = os.getenv('PROJECT_DATA_DIR')
+            if project_data_dir:
+                self.config_dir = Path(project_data_dir)
+            else:
+                # 使用默认的新数据目录结构
+                self.config_dir = Path.home() / "Developer" / "Code" / "Data" / "srv" / "readme_flat"
             self.config_path = self.config_dir / "config.yaml"
         else:
             self.config_path = Path(config_path)
             self.config_dir = self.config_path.parent
         
         self.config_dir.mkdir(exist_ok=True)
+        self.scan_folders_file = self.config_dir / "scan_folders.json"
         self.config = self.load_config()
     
     def get_default_config(self) -> Dict[str, Any]:
@@ -121,6 +128,58 @@ class ConfigManager:
         current[keys[-1]] = value
         return self.save_config()
     
+    def load_scan_folders(self) -> Dict[str, Any]:
+        """加载扫描文件夹配置"""
+        if self.scan_folders_file.exists():
+            try:
+                with open(self.scan_folders_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
+        
+        # 返回默认扫描配置
+        return {
+            "source_folders": [
+                str(Path.home() / "Developer" / "Cloud" / "Dropbox" / "-WorkSpace-" / "Code" / "Area" / "Project" / "Application"),
+                str(Path.home() / "Developer" / "Code" / "Local" / "Scripts")
+            ],
+            "target_folder": str(Path.home() / "Developer" / "Code" / "Local" / "Temp" / "[readme]"),
+            "file_patterns": [
+                "README.md",
+                "readme.md",
+                "README.txt",
+                "readme.txt"
+            ],
+            "exclude_patterns": [
+                "*.git*",
+                "node_modules",
+                "__pycache__",
+                "*.pyc",
+                ".venv",
+                "venv"
+            ]
+        }
+    
+    def get_source_folders(self) -> List[str]:
+        """获取源文件夹列表"""
+        scan_config = self.load_scan_folders()
+        return scan_config.get("source_folders", [])
+    
+    def get_target_folder(self) -> str:
+        """获取目标文件夹"""
+        scan_config = self.load_scan_folders()
+        return scan_config.get("target_folder", "")
+    
+    def get_file_patterns(self) -> List[str]:
+        """获取文件模式列表"""
+        scan_config = self.load_scan_folders()
+        return scan_config.get("file_patterns", [])
+    
+    def get_exclude_patterns(self) -> List[str]:
+        """获取排除模式列表"""
+        scan_config = self.load_scan_folders()
+        return scan_config.get("exclude_patterns", [])
+    
     def add_source_folder(self, folder_path: str, enabled: bool = True) -> bool:
         """添加源文件夹"""
         folder_path = os.path.expanduser(folder_path)
@@ -180,8 +239,8 @@ class ConfigManager:
         
         return self.set("target_folder", folder_path)
     
-    def get_target_folder(self) -> str:
-        """获取目标文件夹"""
+    def get_target_folder_from_config(self) -> str:
+        """从主配置文件获取目标文件夹"""
         target = self.get("target_folder", "")
         return os.path.expanduser(target) if target else ""
     

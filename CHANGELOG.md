@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING**: Migrated CLI framework from Click to Typer
-- **BREAKING**: Changed data directory from `~/.readme-sync/` to `~/Developer/Code/Script_data/readme-sync/`
+- **BREAKING**: Changed data directory from `~/.readme-sync/` to `~/Developer/Code/Data/srv/readme_flat/`
 - Reorganized source code structure according to framework guidelines
 - Updated entry point from `readme_sync.cli:cli` to `readme_sync.cli:app`
 - Enhanced autostart command for simplified daemon management

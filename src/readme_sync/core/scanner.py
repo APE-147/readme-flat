@@ -94,8 +94,8 @@ class FileScanner:
             dirs[:] = [d for d in dirs if not self.config.is_excluded(os.path.join(root, d))]
             
             for file in files:
-                # 检查是否为README文件（大小写不敏感）
-                if file.lower().startswith('readme') and file.lower().endswith('.md'):
+                # 检查是否为精确的README.md文件（大小写不敏感）
+                if file.lower() == 'readme.md':
                     readme_path = os.path.join(root, file)
                     
                     # 检查路径是否被排除

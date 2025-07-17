@@ -13,9 +13,19 @@ NC='\033[0m' # No Color
 
 # 应用配置
 APP_NAME="readme-sync-manager"
-DATA_DIR="$HOME/Developer/Code/Script_data/readme-sync"
 INSTALL_DIR="$HOME/.local/bin"
 REPO_URL="https://github.com/yourusername/readme-sync-manager.git"
+
+# 使用新的数据目录结构
+# Try to source the common environment first
+if [[ -f ~/.env_common ]]; then
+    source ~/.env_common
+    slug=$(slugify "readme-flat")
+    DATA_DIR=$(get_project_data "$slug")
+else
+    # Fallback to default path structure
+    DATA_DIR="$HOME/Developer/Code/Data/srv/readme_flat"
+fi
 
 # 打印带颜色的消息
 print_info() {
@@ -82,6 +92,31 @@ create_data_directory() {
     print_info "创建数据目录: $DATA_DIR"
     mkdir -p "$DATA_DIR"
     print_success "数据目录创建完成"
+}
+
+# 设置环境变量
+setup_environment() {
+    print_info "设置环境变量..."
+    
+    local shell_config=""
+    if [[ -n "${BASH_VERSION:-}" ]]; then
+        shell_config="$HOME/.bashrc"
+    elif [[ -n "${ZSH_VERSION:-}" ]]; then
+        shell_config="$HOME/.zshrc"
+    else
+        shell_config="$HOME/.profile"
+    fi
+    
+    # 添加 PROJECT_DATA_DIR 环境变量
+    local env_line="export PROJECT_DATA_DIR=\"$DATA_DIR\""
+    if ! grep -q "PROJECT_DATA_DIR" "$shell_config" 2>/dev/null; then
+        echo "" >> "$shell_config"
+        echo "# README Sync Manager configuration" >> "$shell_config"
+        echo "$env_line" >> "$shell_config"
+        print_success "环境变量已添加到 $shell_config"
+    else
+        print_info "环境变量已存在"
+    fi
 }
 
 # 安装应用
@@ -170,16 +205,18 @@ show_post_install_info() {
     echo
     print_info "📋 接下来的步骤:"
     echo "  1. 重新加载 shell 配置或重启终端"
-    echo "  2. 运行 'readme-sync init' 初始化配置"
-    echo "  3. 运行 'readme-sync add-source <项目目录>' 添加源文件夹"
-    echo "  4. 运行 'readme-sync set-target <目标目录>' 设置目标文件夹"
-    echo "  5. 运行 'readme-sync sync' 执行首次同步"
-    echo "  6. 运行 'readme-sync daemon start' 启动后台守护进程"
+    echo "  2. 确保 PROJECT_DATA_DIR 环境变量已设置: export PROJECT_DATA_DIR=\"$DATA_DIR\""
+    echo "  3. 运行 'readme-sync init' 初始化配置"
+    echo "  4. 运行 'readme-sync add-source <项目目录>' 添加源文件夹"
+    echo "  5. 运行 'readme-sync set-target <目标目录>' 设置目标文件夹"
+    echo "  6. 运行 'readme-sync sync' 执行首次同步"
+    echo "  7. 运行 'readme-sync daemon start' 启动后台守护进程"
     echo
     print_info "📚 更多帮助:"
     echo "  - 运行 'readme-sync --help' 查看所有命令"
     echo "  - 数据目录: $DATA_DIR"
     echo "  - 配置文件: $DATA_DIR/config.yaml"
+    echo "  - 环境设置脚本: scripts/setup_env.sh"
     echo
     print_info "🚀 开始使用吧！"
 }
@@ -193,6 +230,7 @@ main() {
     detect_os
     check_dependencies
     create_data_directory
+    setup_environment
     install_app
     init_config
     install_system_service

@@ -38,6 +38,8 @@
         <string>{home_dir}</string>
         <key>USER</key>
         <string>{username}</string>
+        <key>PROJECT_DATA_DIR</key>
+        <string>{data_dir}</string>
     </dict>
     
     <key>ProcessType</key>

@@ -53,6 +53,15 @@ class AutoStartManager:
             print(f"获取readme-sync路径失败: {e}")
             return None
     
+    def _get_data_dir(self) -> str:
+        """获取数据目录路径"""
+        project_data_dir = os.getenv('PROJECT_DATA_DIR')
+        if project_data_dir:
+            return project_data_dir
+        else:
+            # 使用默认的新数据目录结构
+            return str(self.home_dir / "Developer" / "Code" / "Data" / "srv" / "readme_flat")
+    
     def create_plist(self) -> bool:
         """创建launchd plist文件"""
         if not self.readme_sync_path:
@@ -84,10 +93,10 @@ class AutoStartManager:
     </dict>
     
     <key>StandardOutPath</key>
-    <string>{self.home_dir}/.readme-sync/launchd.out</string>
+    <string>{self._get_data_dir()}/launchd.out</string>
     
     <key>StandardErrorPath</key>
-    <string>{self.home_dir}/.readme-sync/launchd.err</string>
+    <string>{self._get_data_dir()}/launchd.err</string>
     
     <key>WorkingDirectory</key>
     <string>{self.home_dir}</string>
@@ -105,6 +114,8 @@ class AutoStartManager:
     <dict>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:{os.path.dirname(self.readme_sync_path)}</string>
+        <key>PROJECT_DATA_DIR</key>
+        <string>{self._get_data_dir()}</string>
     </dict>
 </dict>
 </plist>"""
