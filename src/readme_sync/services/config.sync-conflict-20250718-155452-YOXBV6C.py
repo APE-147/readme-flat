@@ -40,9 +40,6 @@ class ConfigManager:
                 "conflict_resolution": "latest",  # latest, manual, source_priority, target_priority
                 "tolerance_seconds": 5,           # 时间容忍度
                 "auto_sync_interval": 1,          # 自动同步间隔(秒)
-                "cleanup_interval": 3600,         # 清理间隔(秒) - 默认1小时
-                "move_unlinked_files": True,      # 是否移动未链接文件
-                "unlinked_subfolder": "unlinked", # 未链接文件子文件夹名称
             },
             "naming_rules": {
                 "pattern": "{project_name}-README",  # 命名模式
@@ -242,8 +239,8 @@ class ConfigManager:
         
         return self.set("target_folder", folder_path)
     
-    def get_target_folder_from_config(self) -> str:
-        """从主配置文件获取目标文件夹"""
+    def get_target_folder(self) -> str:
+        """获取目标文件夹"""
         target = self.get("target_folder", "")
         return os.path.expanduser(target) if target else ""
     
@@ -277,36 +274,6 @@ class ConfigManager:
     def get_auto_sync_interval(self) -> int:
         """获取自动同步间隔"""
         return self.get("sync_settings.auto_sync_interval", 1)
-    
-    def get_cleanup_interval(self) -> int:
-        """获取清理间隔(秒)"""
-        return self.get("sync_settings.cleanup_interval", 3600)  # 默认1小时
-    
-    def set_cleanup_interval(self, interval_seconds: int) -> bool:
-        """设置清理间隔(秒)"""
-        if interval_seconds < 60:  # 最小1分钟
-            print("清理间隔不能小于60秒")
-            return False
-        return self.set("sync_settings.cleanup_interval", interval_seconds)
-    
-    def get_move_unlinked_files(self) -> bool:
-        """获取是否移动未链接文件"""
-        return self.get("sync_settings.move_unlinked_files", True)
-    
-    def set_move_unlinked_files(self, enabled: bool) -> bool:
-        """设置是否移动未链接文件"""
-        return self.set("sync_settings.move_unlinked_files", enabled)
-    
-    def get_unlinked_subfolder(self) -> str:
-        """获取未链接文件子文件夹名称"""
-        return self.get("sync_settings.unlinked_subfolder", "unlinked")
-    
-    def set_unlinked_subfolder(self, subfolder_name: str) -> bool:
-        """设置未链接文件子文件夹名称"""
-        if not subfolder_name or "/" in subfolder_name or "\\" in subfolder_name:
-            print("子文件夹名称无效")
-            return False
-        return self.set("sync_settings.unlinked_subfolder", subfolder_name)
     
     def validate_config(self) -> List[str]:
         """验证配置有效性，返回错误列表"""

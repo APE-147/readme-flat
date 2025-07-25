@@ -313,6 +313,91 @@ def cleanup():
 
 
 @app.command()
+def move_unlinked():
+    """移动未链接文件到子文件夹"""
+    config = ConfigManager()
+    db = DatabaseManager()
+    
+    # 获取目标文件夹
+    target_folder = config.get_target_folder_from_config()
+    if not target_folder:
+        console.print("❌ 未设置目标文件夹", style="red")
+        return
+    
+    if not os.path.exists(target_folder):
+        console.print(f"❌ 目标文件夹不存在: {target_folder}", style="red")
+        return
+    
+    # 检查配置
+    if not config.get_move_unlinked_files():
+        console.print("ℹ️ 未链接文件移动功能已禁用", style="yellow")
+        console.print("可使用以下命令启用: readme-sync config set sync_settings.move_unlinked_files true")
+        return
+    
+    subfolder = config.get_unlinked_subfolder()
+    
+    console.print(f"扫描目标文件夹中的未链接文件: {target_folder}", style="yellow")
+    
+    # 查找未链接文件
+    unlinked_files = db.find_unlinked_files(target_folder)
+    
+    if not unlinked_files:
+        console.print("✓ 没有发现未链接文件", style="green")
+        return
+    
+    console.print(f"发现 {len(unlinked_files)} 个未链接文件:", style="yellow")
+    for file_path in unlinked_files:
+        console.print(f"  • {os.path.basename(file_path)}", style="dim")
+    
+    # 移动文件
+    console.print(f"\n移动文件到 {subfolder}/ 文件夹...", style="yellow")
+    moved_count = db.move_unlinked_files(target_folder, subfolder)
+    
+    if moved_count > 0:
+        console.print(f"✓ 成功移动了 {moved_count} 个文件", style="green")
+    else:
+        console.print("❌ 移动失败", style="red")
+
+
+@app.command()
+def list_unlinked():
+    """列出未链接文件"""
+    config = ConfigManager()
+    db = DatabaseManager()
+    
+    # 获取目标文件夹
+    target_folder = config.get_target_folder_from_config()
+    if not target_folder:
+        console.print("❌ 未设置目标文件夹", style="red")
+        return
+    
+    if not os.path.exists(target_folder):
+        console.print(f"❌ 目标文件夹不存在: {target_folder}", style="red")
+        return
+    
+    console.print(f"扫描目标文件夹: {target_folder}", style="yellow")
+    
+    # 查找未链接文件
+    unlinked_files = db.find_unlinked_files(target_folder)
+    
+    if not unlinked_files:
+        console.print("✓ 没有发现未链接文件", style="green")
+        return
+    
+    console.print(f"\n发现 {len(unlinked_files)} 个未链接文件:", style="yellow")
+    
+    for file_path in unlinked_files:
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        file_size_str = f"{file_size:,} bytes" if file_size < 1024 else f"{file_size/1024:.1f} KB"
+        
+        console.print(f"  📄 {file_name} ({file_size_str})", style="white")
+    
+    subfolder = config.get_unlinked_subfolder()
+    console.print(f"\n💡 使用 'readme-sync move-unlinked' 将这些文件移动到 {subfolder}/ 文件夹", style="cyan")
+
+
+@app.command()
 def smart_sync(
     dry_run: bool = typer.Option(False, "--dry-run", help="仅显示需要同步的文件，不执行实际同步")
 ):
@@ -438,6 +523,90 @@ def config_get(key: str = typer.Argument(..., help="配置项名称")):
         console.print(f"{key} = {value}")
     else:
         console.print(f"配置项不存在: {key}", style="red")
+
+
+@config_app.command("cleanup-interval")
+def config_cleanup_interval(
+    interval: Optional[int] = typer.Argument(
+        None, 
+        help="清理间隔(秒)，最小60秒。如果不提供，则显示当前值"
+    )
+):
+    """设置或查看清理间隔"""
+    config = ConfigManager()
+    
+    if interval is None:
+        # 显示当前值
+        current_interval = config.get_cleanup_interval()
+        hours = current_interval // 3600
+        minutes = (current_interval % 3600) // 60
+        
+        if hours > 0:
+            interval_str = f"{hours}小时{minutes}分钟" if minutes > 0 else f"{hours}小时"
+        else:
+            interval_str = f"{minutes}分钟"
+        
+        console.print(f"当前清理间隔: {current_interval}秒 ({interval_str})", style="yellow")
+    else:
+        # 设置新值
+        if config.set_cleanup_interval(interval):
+            hours = interval // 3600
+            minutes = (interval % 3600) // 60
+            
+            if hours > 0:
+                interval_str = f"{hours}小时{minutes}分钟" if minutes > 0 else f"{hours}小时"
+            else:
+                interval_str = f"{minutes}分钟"
+            
+            console.print(f"✓ 清理间隔已设置为: {interval}秒 ({interval_str})", style="green")
+            console.print("💡 提示: 重启守护进程以应用新设置", style="yellow")
+        else:
+            console.print("❌ 设置失败", style="red")
+
+
+@config_app.command("unlinked-files")
+def config_unlinked_files(
+    enable: Optional[bool] = typer.Argument(None, help="启用或禁用未链接文件移动 (true/false)")
+):
+    """设置或查看未链接文件移动配置"""
+    config = ConfigManager()
+    
+    if enable is None:
+        # 显示当前值
+        current_enabled = config.get_move_unlinked_files()
+        subfolder = config.get_unlinked_subfolder()
+        
+        status = "启用" if current_enabled else "禁用"
+        console.print(f"未链接文件移动: {status}", style="yellow")
+        console.print(f"目标子文件夹: {subfolder}/", style="yellow")
+    else:
+        # 设置新值
+        if config.set_move_unlinked_files(enable):
+            status = "启用" if enable else "禁用"
+            console.print(f"✓ 未链接文件移动已{status}", style="green")
+            console.print("💡 提示: 重启守护进程以应用新设置", style="yellow")
+        else:
+            console.print("❌ 设置失败", style="red")
+
+
+@config_app.command("unlinked-subfolder")
+def config_unlinked_subfolder(
+    subfolder: Optional[str] = typer.Argument(None, help="未链接文件子文件夹名称")
+):
+    """设置或查看未链接文件子文件夹名称"""
+    config = ConfigManager()
+    
+    if subfolder is None:
+        # 显示当前值
+        current_subfolder = config.get_unlinked_subfolder()
+        console.print(f"当前子文件夹名称: {current_subfolder}", style="yellow")
+    else:
+        # 设置新值
+        if config.set_unlinked_subfolder(subfolder):
+            console.print(f"✓ 子文件夹名称已设置为: {subfolder}", style="green")
+            console.print("💡 提示: 重启守护进程以应用新设置", style="yellow")
+        else:
+            console.print("❌ 设置失败", style="red")
 
 
 # 守护进程管理命令

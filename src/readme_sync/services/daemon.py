@@ -7,9 +7,12 @@ import time
 import signal
 import atexit
 import psutil
+import threading
 from pathlib import Path
 from typing import Optional
 from .watcher import RealtimeSyncManager
+from .database import DatabaseManager
+from .config import ConfigManager
 
 
 class DaemonManager:
@@ -34,6 +37,13 @@ class DaemonManager:
         
         # 实时同步管理器
         self.sync_manager = None
+        
+        # 定期任务线程和停止事件
+        self.periodic_cleanup_thread = None
+        self.stop_event = threading.Event()
+        
+        # 数据库管理器
+        self.db_manager = None
     
     def start(self, detach: bool = True) -> bool:
         """启动守护进程"""
@@ -210,6 +220,9 @@ class DaemonManager:
             # 创建并启动实时同步管理器
             self.sync_manager = RealtimeSyncManager(self.config_path)
             
+            # 创建数据库管理器
+            self.db_manager = DatabaseManager()
+            
             # 写入状态文件
             self._write_status("starting")
             
@@ -219,6 +232,9 @@ class DaemonManager:
             if self.sync_manager.is_running:
                 print("[守护进程] 实时同步已启动")
                 self._write_status("running")
+                
+                # 启动定期清理任务
+                self._start_periodic_cleanup()
                 
                 # 持续运行
                 self.sync_manager.run_forever()
@@ -230,14 +246,99 @@ class DaemonManager:
             print(f"[守护进程] 运行时错误: {e}")
             self._write_status("error")
         finally:
+            # 停止定期任务
+            self.stop_event.set()
+            if self.periodic_cleanup_thread and self.periodic_cleanup_thread.is_alive():
+                self.periodic_cleanup_thread.join(timeout=5)
+            
             # 清理资源
             if self.sync_manager:
                 self.sync_manager.stop()
             self._cleanup_files()
     
+    def _start_periodic_cleanup(self):
+        """启动定期清理任务"""
+        # 获取配置管理器
+        config = ConfigManager()
+        cleanup_interval = config.get_cleanup_interval()
+        
+        print(f"[守护进程] 启动定期清理任务，间隔: {cleanup_interval}秒")
+        
+        # 创建并启动清理线程
+        self.periodic_cleanup_thread = threading.Thread(
+            target=self._periodic_cleanup_worker,
+            args=(cleanup_interval,),
+            daemon=True
+        )
+        self.periodic_cleanup_thread.start()
+    
+    def _periodic_cleanup_worker(self, interval: int):
+        """定期清理工作线程"""
+        last_cleanup_time = time.time()
+        
+        while not self.stop_event.is_set():
+            current_time = time.time()
+            
+            # 检查是否到达清理时间
+            if current_time - last_cleanup_time >= interval:
+                try:
+                    print(f"[定期清理] 开始执行清理任务 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # 执行孤立映射清理
+                    orphaned_count = self.db_manager.cleanup_orphaned_mappings()
+                    
+                    if orphaned_count > 0:
+                        print(f"[定期清理] 清理了 {orphaned_count} 个孤立映射")
+                    else:
+                        print("[定期清理] 没有发现孤立映射")
+                    
+                    # 执行未链接文件移动
+                    self._cleanup_unlinked_files()
+                    
+                    last_cleanup_time = current_time
+                    
+                except Exception as e:
+                    print(f"[定期清理] 清理任务执行失败: {e}")
+            
+            # 每秒检查一次停止事件
+            self.stop_event.wait(1)
+    
+    def _cleanup_unlinked_files(self):
+        """清理未链接文件"""
+        try:
+            from .config import ConfigManager
+            
+            config = ConfigManager()
+            
+            # 检查是否启用未链接文件移动
+            if not config.get_move_unlinked_files():
+                return
+            
+            # 获取目标文件夹
+            target_folder = config.get_target_folder_from_config()
+            if not target_folder or not os.path.exists(target_folder):
+                return
+            
+            # 获取子文件夹名称
+            subfolder = config.get_unlinked_subfolder()
+            
+            # 移动未链接文件
+            moved_count = self.db_manager.move_unlinked_files(target_folder, subfolder)
+            
+            if moved_count > 0:
+                print(f"[定期清理] 移动了 {moved_count} 个未链接文件到 {subfolder}/ 文件夹")
+            else:
+                print("[定期清理] 没有发现未链接文件")
+                
+        except Exception as e:
+            print(f"[定期清理] 未链接文件清理失败: {e}")
+    
     def _signal_handler(self, signum, frame):
         """信号处理函数"""
         print(f"[守护进程] 收到信号 {signum}，正在停止...")
+        
+        # 设置停止事件
+        self.stop_event.set()
         
         if self.sync_manager:
             self.sync_manager.stop()
