@@ -61,6 +61,10 @@ class FileScanner:
         """生成目标文件名"""
         pattern = self.config.get_naming_pattern()
         filename = pattern.format(project_name=project_name)
+
+        # 强制扁平化：移除任何路径分隔符，避免在目标目录下创建子目录
+        # 将可能的分隔符替换为连字符，保证只生成文件名
+        filename = filename.replace('/', '-').replace('\\', '-')
         
         # 处理大小写
         case_style = self.config.get("naming_rules.case_style", "keep")
@@ -72,7 +76,7 @@ class FileScanner:
         # 确保有.md扩展名
         if not filename.lower().endswith('.md'):
             filename += '.md'
-        
+
         return filename
     
     def find_readme_files(self, source_folder: str) -> List[Dict[str, str]]:

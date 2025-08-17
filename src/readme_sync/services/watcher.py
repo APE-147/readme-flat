@@ -73,9 +73,13 @@ class ReadmeFileHandler(FileSystemEventHandler):
                 self._schedule_sync(new_path, 'moved_to')
     
     def _is_readme_file(self, file_path: str) -> bool:
-        """判断是否为README文件"""
+        """判断是否为README相关的 Markdown 文件
+
+        规则：文件名包含 'readme'（不区分大小写）且以 .md 结尾，
+        以兼容形如 'Default-README.md' 的目标文件命名。
+        """
         filename = os.path.basename(file_path).lower()
-        return filename.startswith('readme') and filename.endswith('.md')
+        return filename.endswith('.md') and ('readme' in filename)
     
     def _schedule_sync(self, file_path: str, event_type: str):
         """调度同步任务（防抖）"""

@@ -156,9 +156,9 @@ class SyncEngine:
                 target_path = existing_target_file
                 print(f"使用已存在的目标文件: {target_path}")
             else:
-                # 构建默认目标路径（仅在目标文件夹根目录）
+                # 构建默认目标路径（目标文件夹根目录，扁平化文件名）
                 target_folder = self.config.get_target_folder()
-                target_path = os.path.join(target_folder, target_filename)
+                target_path = os.path.join(target_folder, os.path.basename(target_filename))
             
             if mapping and mapping['target_path'] != target_path:
                 # 目标文件路径发生变化
@@ -448,7 +448,7 @@ class SyncEngine:
             print(f"移动文件失败: {e}")
     
     def _find_existing_target_file(self, source_path: str, target_filename: str) -> Optional[str]:
-        """在目标文件夹中递归搜索是否存在对应的文件"""
+        """在目标文件夹中递归搜索是否存在对应的文件（按文件名匹配为主）"""
         target_folder = self.config.get_target_folder()
         if not target_folder or not os.path.exists(target_folder):
             return None
@@ -457,15 +457,18 @@ class SyncEngine:
         source_hash = self.db.get_file_hash(source_path)
         if not source_hash:
             return None
-        
+
+        # 仅文件名（扁平化比较）
+        base_target_name = os.path.basename(target_filename)
+        base_target_noext = os.path.splitext(base_target_name)[0].lower()
+
         # 递归搜索目标文件夹
         for root, dirs, files in os.walk(target_folder):
             for file in files:
                 if file.lower().endswith('.md'):
                     file_path = os.path.join(root, file)
-                    
-                    # 方法1: 通过文件名匹配（精确匹配或相似匹配）
-                    if file == target_filename:
+                    # 方法1: 文件名精确匹配（扁平化）
+                    if file == base_target_name:
                         return file_path
                     
                     # 方法2: 通过文件哈希值匹配（内容相同）
@@ -473,10 +476,9 @@ class SyncEngine:
                     if file_hash and file_hash == source_hash:
                         return file_path
                     
-                    # 方法3: 通过文件名模糊匹配（去除扩展名后的基本匹配）
-                    base_target = os.path.splitext(target_filename)[0].lower()
+                    # 方法3: 基名匹配（去扩展名后相等）
                     base_file = os.path.splitext(file)[0].lower()
-                    if base_target == base_file:
+                    if base_target_noext == base_file:
                         return file_path
         
         return None

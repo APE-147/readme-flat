@@ -25,9 +25,9 @@ def main() -> int:
     parser.add_argument("--args-file", help='Path to a file containing JSON object with keys {"sources": [...], "target": "..."}')
     parser.add_argument(
         "--mode",
-        choices=["sync", "clean", "reset", "stop", "reverse"],
+        choices=["sync", "clean", "reset", "stop", "reverse", "mappings"],
         default="sync",
-        help="Operation mode: sync|clean|reset|stop|reverse",
+        help="Operation mode: sync|clean|reset|stop|reverse|mappings",
     )
     parser.add_argument(
         "--stop-daemon",
@@ -296,6 +296,17 @@ def main() -> int:
                 "logs": {"stdout": cap_out, "stderr": cap_err},
             }, ensure_ascii=False))
 
+        elif args.mode == "mappings":
+            # List all existing mappings as JSON
+            rows = db.get_all_mappings()
+            print(json.dumps({
+                "success": True,
+                "mode": "mappings",
+                "count": len(rows),
+                "mappings": rows,
+                "effective_sources": cfg.get_enabled_source_folders(),
+                "effective_target": cfg.get_target_folder(),
+            }, ensure_ascii=False))
         else:  # reset (stop + wipe + restart)
             conf_dir = Path(cfg.get_config_dir())
             removed = []

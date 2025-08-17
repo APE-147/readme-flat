@@ -266,6 +266,40 @@ def status():
 
 
 @app.command()
+def mappings():
+    """列出已建立的源-目标映射关系"""
+    db = DatabaseManager()
+    try:
+        rows = db.get_all_mappings()
+        if not rows:
+            console.print("当前没有任何映射记录", style="yellow")
+            return
+
+        table = Table(title="文件映射列表")
+        table.add_column("项目", style="cyan", no_wrap=True)
+        table.add_column("源文件", style="green")
+        table.add_column("目标文件", style="yellow")
+        table.add_column("文件名", style="magenta", no_wrap=True)
+        table.add_column("上次同步", style="dim", no_wrap=True)
+
+        from datetime import datetime
+        for m in rows:
+            last_sync = m.get("last_sync_time") or 0
+            ts = datetime.fromtimestamp(last_sync).strftime("%Y-%m-%d %H:%M:%S") if last_sync else "-"
+            table.add_row(
+                str(m.get("project_name", "-")),
+                str(m.get("source_path", "-")),
+                str(m.get("target_path", "-")),
+                str(m.get("renamed_filename", "-")),
+                ts,
+            )
+        console.print(table)
+        console.print(f"共 {len(rows)} 条映射", style="green")
+    except Exception as e:
+        console.print(f"获取映射失败: {e}", style="red")
+
+
+@app.command()
 def scan():
     """扫描并显示README文件"""
     config = ConfigManager()
