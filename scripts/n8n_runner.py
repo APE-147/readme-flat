@@ -123,7 +123,21 @@ def main() -> int:
                 if target_env:
                     overrides["target"] = target_env
 
+        # Propagate config path and runtime overrides to child components
+        os.environ["READMESYNC_CONFIG"] = str(config_path)
+        if overrides is not None:
+            try:
+                os.environ["READMESYNC_ARGS_JSON"] = json.dumps(overrides, ensure_ascii=False)
+            except Exception:
+                pass
+
         cfg = ConfigManager(config_path, runtime_overrides=overrides)
+        # 若提供了覆盖参数，则确保将有效配置写盘，便于后续无覆盖的组件读取
+        try:
+            if overrides is not None:
+                cfg.save_config()
+        except Exception:
+            pass
         db = DatabaseManager()
 
         if args.mode == "sync":

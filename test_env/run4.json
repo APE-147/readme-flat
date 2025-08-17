@@ -1,0 +1,1 @@
+{"success": true, "mode": "sync", "result": {"scanned": 0, "synced": 0, "reverse_synced": 0, "conflicts": 0, "errors": 0, "moved_detected": 0, "unlinked_moved": 0}, "effective_sources": ["test_env/src1"], "effective_target": "test_env/target", "logs": {"stdout": "开始执行完整同步...\n扫描文件夹: test_env/src1\n找到 0 个README文件\n未找到任何README文件\n", "stderr": ""}}

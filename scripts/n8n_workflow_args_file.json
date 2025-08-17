@@ -28,6 +28,19 @@
       },
       {
         "parameters": {
+          "command": "python - <<'PY'\nimport json, os, sys\nfrom pathlib import Path\nrepo = Path('/Users/niceday/Developer/Cloud/Dropbox/-Code-//Scripts/desktop/readme-flat')\nsrc = repo / 'src'\nsys.path.insert(0, str(src))\nfrom readme_sync.services.config import ConfigManager\n# Config path and ensure directory\ncfg_path = Path('/Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml')\ncfg_path.parent.mkdir(parents=True, exist_ok=True)\n# Load args from /tmp/args.json\nwith open('/tmp/args.json', 'r', encoding='utf-8') as f:\n    args = json.load(f)\ncm = ConfigManager(str(cfg_path))\nconf = cm.get_default_config()\nsrcs = [os.path.expanduser(p) for p in args.get('sources', []) if p]\nconf['source_folders'] = [{'path': p, 'enabled': True} for p in srcs]\nconf['target_folder'] = os.path.expanduser(args.get('target', '') or '')\ncm.save_config(conf)\nprint('config_written:', cfg_path)\nPY"
+        },
+        "id": "f1a2b3c4-d5e6-7890-abcd-1234567890ff",
+        "name": "readme_Init",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -640,
+          2752
+        ]
+      },
+      {
+        "parameters": {
           "functionCode": "const raw = $json.stdout || '';\nlet data = {};\ntry { data = JSON.parse(raw); } catch (e) {\n  return [{ json: { error: 'Invalid JSON from runner', raw } }];\n}\nconst rows = Array.isArray(data.mappings) ? data.mappings : [];\nfunction fmt(ts){ return ts ? new Date(ts*1000).toISOString().replace('T',' ').slice(0,19) : '-'; }\nreturn rows.map(m => ({ json: {\n  id: m.id,\n  project: m.project_name,\n  filename: m.renamed_filename,\n  source: m.source_path,\n  target: m.target_path,\n  synced_at: fmt(m.last_sync_time),\n}}));"
         },
         "id": "f0f0f0f0-1234-5678-9abc-def012345678",
@@ -112,32 +125,6 @@
       },
       {
         "parameters": {
-          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode clean --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
-        },
-        "id": "3d37f5f0-9af6-47b0-9d78-77f93b0197da",
-        "name": "readme_Clean",
-        "type": "n8n-nodes-base.executeCommand",
-        "typeVersion": 1,
-        "position": [
-          -496,
-          2912
-        ]
-      },
-      {
-        "parameters": {
-          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode reverse --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
-        },
-        "id": "b3d9d6b0-2b92-4f40-9b7a-9e0b0c2a9f1a",
-        "name": "readme_Reverse (Write Back)",
-        "type": "n8n-nodes-base.executeCommand",
-        "typeVersion": 1,
-        "position": [
-          -304,
-          2912
-        ]
-      },
-      {
-        "parameters": {
           "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode stop --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
         },
         "id": "bc378408-bec7-4b0e-92ce-325772c15bb7",
@@ -195,36 +182,38 @@
           ]
         ]
       },
-      "Write Args File": {
+  "Write Args File": {
+    "main": [
+      [
+        {
+          "node": "readme_Sync",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Check Args File",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    ]
+  },
+      "readme_Init": {
         "main": [
           [
             {
               "node": "readme_Sync",
               "type": "main",
               "index": 0
-            },
-          {
-              "node": "readme_Clean",
-              "type": "main",
-              "index": 0
-          },
-          {
-              "node": "readme_Reverse (Write Back)",
-              "type": "main",
-              "index": 0
-          },
-          {
+            }
+          ]
+        ]
+      },
+      "readme_Sync": {
+        "main": [
+          [
+            {
               "node": "readme_ListMappings",
-              "type": "main",
-              "index": 0
-          },
-            {
-              "node": "readme_Stop",
-              "type": "main",
-              "index": 0
-            },
-            {
-              "node": "Check Args File",
               "type": "main",
               "index": 0
             }
@@ -268,7 +257,7 @@
         "main": [
           [
             {
-              "node": "readme_Sync",
+              "node": "readme_Paths",
               "type": "main",
               "index": 0
             }

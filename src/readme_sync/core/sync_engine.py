@@ -82,7 +82,8 @@ class SyncEngine:
             'reverse_synced': 0,
             'conflicts': 0,
             'errors': 0,
-            'moved_detected': 0
+            'moved_detected': 0,
+            'unlinked_moved': 0,
         }
         
         # 1. 检测文件移动
@@ -119,7 +120,19 @@ class SyncEngine:
         orphaned = self.db.cleanup_orphaned_mappings()
         if orphaned > 0:
             print(f"清理了 {orphaned} 个孤立映射")
-        
+
+        # 4.1 移动未链接文件（包括源文件丢失对应的目标文件）
+        try:
+            if self.config.get_move_unlinked_files():
+                target_folder = self.config.get_target_folder()
+                if target_folder and os.path.exists(target_folder):
+                    moved = self.db.move_unlinked_files(target_folder, self.config.get_unlinked_subfolder())
+                    results['unlinked_moved'] = moved
+                    if moved > 0:
+                        print(f"移动了 {moved} 个未链接文件到 {self.config.get_unlinked_subfolder()}/ 文件夹")
+        except Exception as e:
+            print(f"移动未链接文件阶段失败: {e}")
+
         # 5. 反向同步一遍（处理用户在目标的修改）
         try:
             reverse = self.reverse_sync_from_target()

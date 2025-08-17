@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "data_dir": "test_env",
+  "source_folders": [
+    {
+      "path": "test_env/src1",
+      "enabled": true
+    }
+  ],
+  "target_folder": "test_env/target",
+  "sync_settings": {
+    "conflict_resolution": "latest",
+    "tolerance_seconds": 5,
+    "auto_sync_interval": 1,
+    "cleanup_interval": 3600,
+    "move_unlinked_files": true,
+    "unlinked_subfolder": "unlinked"
+  },
+  "naming_rules": {
+    "pattern": "{project_name}-README",
+    "case_style": "keep"
+  },
+  "exclusions": [
+    "node_modules",
+    ".git",
+    "venv",
+    "__pycache__",
+    ".DS_Store",
+    "*.tmp",
+    "*.log"
+  ]
+}
