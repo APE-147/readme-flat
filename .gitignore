@@ -85,12 +85,7 @@ config/production_config.yaml
 .env.local
 .env.production
 
-# User data directories
-/Users/
-~/
-# Specific user paths
-**/user/**
-**/*@*.com
+# User-specific paths (removed absolute/user-dependent patterns)
 
 # Temporary and cache files
 cache/
