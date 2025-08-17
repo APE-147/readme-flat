@@ -21,24 +21,21 @@ README Sync Manager 是一个用于集中管理和同步多个项目 README 文�
 
 ```mermaid
 graph TD
-    A[deploy.sh] --> B[生成scan_folders.json]
-    A --> C[创建LaunchAgent]
-    A --> D[设置PROJECT_DATA_DIR]
+    A[autostart/launchctl] --> C[创建LaunchAgent]
     
-    E[main.py] --> F[Config加载]
-    F --> G[读取scan_folders.json]
+    E[CLI/守护进程] --> F[加载配置]
     F --> H[设置数据目录]
     
     I[文件扫描] --> J[遍历源目录]
     J --> K[查找README文件]
     K --> L[复制到目标目录]
     
-    M[同步服务] --> N[定时扫描]
+    M[同步服务] --> N[定期扫描]
     N --> O[文件变化检测]
     O --> P[增量同步]
     O --> Q1[智能冲突检测]
     
-    Q[LaunchAgent] --> R[守护进程]
+    C --> R[守护进程]
     R --> S[自动同步]
     S --> T[日志记录]
     R --> TC[定期清理任务]
@@ -51,12 +48,10 @@ graph TD
     TH --> TI[移动到unlinked文件夹]
     
     subgraph "数据目录结构"
-        U[~/Developer/Code/Data/srv/readme_sync/]
+        U[/Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/]
         U --> V[config.yaml]
-        U --> W[scan_folders.json]
         U --> X[logs/]
         U --> Y[database.db]
-        U --> Z[sync_data.db]
     end
 ```
 
@@ -70,7 +65,6 @@ graph LR
     A --> E[core/sync_engine.py]
     
     B --> F[config.yaml]
-    B --> G[scan_folders.json]
     
     C --> H[services/watcher.py]
     C --> D
@@ -369,16 +363,75 @@ readme-sync move-unlinked
 ## 数据目录结构
 
 ```
-~/Developer/Code/Data/srv/readme_sync/
-├── config.yaml          # 主配置文件
-├── scan_folders.json    # 扫描目录配置
+/Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/
+├── config.yaml          # 主配置文件（集中管理所有路径设置）
 ├── database.db          # 文件映射数据库
-├── sync_data.db         # 同步数据
 ├── daemon.pid           # 守护进程PID
 ├── daemon.status        # 守护进程状态
 ├── daemon.log           # 守护进程日志
+├── launchd.out          # LaunchAgent 标准输出（如启用）
+├── launchd.err          # LaunchAgent 错误输出（如启用）
 └── logs/                # 其他日志文件
 ```
+
+## 安装与部署
+
+- 安装依赖
+  ```bash
+  pip install -e .[dev]
+  ```
+- 初始化与配置
+  ```bash
+  readme-sync init
+  readme-sync add-source /path/to/src1
+  readme-sync set-target /path/to/target
+  # 或直接编辑固定配置文件：
+  # /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml
+  ```
+- 启动/停止/清理
+  ```bash
+  readme-sync daemon start          # 后台运行（加 -f 前台调试）
+  readme-sync daemon status         # 查看状态
+  readme-sync daemon stop           # 停止并清理 pid/status/log
+  readme-sync daemon clean          # 额外清理 launchd.out/err 等残留
+  ```
+- 开机自启动（macOS）
+  ```bash
+  readme-sync autostart             # 交互安装/卸载 LaunchAgent
+  ```
+
+说明：不再使用 PROJECT_DATA_DIR 和 scan_folders.json；所有路径设置集中于上述 config.yaml。支持通过 n8n 或脚本以“运行时覆盖”的方式临时传入源/目标路径（不写回文件）。
+
+## 反向写回（目标 → 源）
+- 集成于 `sync`：执行正向同步后，会自动进行一轮反向扫描；当“目标文件比源文件新且内容不同（超过容忍秒数）”时，将修改写回源文件。
+- 仅反向模式：使用 runner：
+  ```bash
+  # 从目标扫描写回到源
+  python scripts/n8n_runner.py --mode reverse --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json
+  
+  # 强制写回（只要内容不同就写回）
+  READMESYNC_FORCE=true python scripts/n8n_runner.py --mode reverse --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json
+  ```
+- 并发安全：反向路径引入与正向一致的 per-file 锁，避免正反向竞争。
+
+## 在 n8n 中使用（Option A）
+- 通过 Execute Command 写入 /tmp/args.json：
+  ```bash
+  =printf '%s' '{{ $json.json.argsJson }}' > /tmp/args.json
+  ```
+- 同步（含写回）：
+  ```bash
+  python scripts/n8n_runner.py --mode sync --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json
+  ```
+- 仅写回：
+  ```bash
+  python scripts/n8n_runner.py --mode reverse --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json
+  ```
+- 清理与重置：
+  ```bash
+  python scripts/n8n_runner.py --mode clean  --config ... --args-file /tmp/args.json
+  python scripts/n8n_runner.py --mode reset  --config ... --args-file /tmp/args.json
+  ```
 
 ## 注意事项
 

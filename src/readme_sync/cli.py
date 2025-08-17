@@ -649,6 +649,14 @@ def daemon_stop():
         console.print("停止守护进程失败", style="red")
 
 
+@daemon_app.command("clean")
+def daemon_clean():
+    """清理守护进程相关状态文件（pid/log/status/launchd日志）"""
+    daemon_mgr = DaemonManager()
+    daemon_mgr.clean_state()
+    console.print("已清理守护进程状态文件与日志", style="green")
+
+
 @daemon_app.command("restart")
 def daemon_restart():
     """重启守护进程"""

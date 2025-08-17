@@ -2,7 +2,12 @@
 """配置管理模块"""
 
 import os
-import yaml
+try:
+    import yaml  # type: ignore
+    _YAML_AVAILABLE = True
+except Exception:
+    yaml = None  # type: ignore
+    _YAML_AVAILABLE = False
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -11,29 +16,40 @@ from typing import Dict, List, Any, Optional
 class ConfigManager:
     """配置管理器"""
     
-    def __init__(self, config_path: str = None):
+    def __init__(self, config_path: str = None, runtime_overrides: Optional[Dict[str, Any]] = None):
         """初始化配置管理器"""
+        # 恢复从 config.yaml 读取路径设置；移除旧的 Developer/Code 默认值。
+        # 优先级：--config 参数 > 环境变量 READMESYNC_CONFIG > 固定路径（Dropbox Cloud）
+        env_config = os.getenv("READMESYNC_CONFIG")
+
         if config_path is None:
-            # 使用新的数据目录路径
-            project_data_dir = os.getenv('PROJECT_DATA_DIR')
-            if project_data_dir:
-                self.config_dir = Path(project_data_dir)
+            if env_config:
+                self.config_path = Path(env_config)
             else:
-                # 使用默认的新数据目录结构
-                self.config_dir = Path.home() / "Developer" / "Code" / "Data" / "srv" / "readme_flat"
-            self.config_path = self.config_dir / "config.yaml"
+                # 默认集中配置路径（不再使用 ~/Developer/Code/...），但不会强制创建
+                self.config_path = Path("/Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml")
+            self.config_dir = self.config_path.parent
         else:
             self.config_path = Path(config_path)
             self.config_dir = self.config_path.parent
         
-        self.config_dir.mkdir(exist_ok=True)
+        self._runtime_overrides = runtime_overrides or {}
+        # 不自动创建目录与文件，除非调用方需要持久化
         self.scan_folders_file = self.config_dir / "scan_folders.json"
         self.config = self.load_config()
+        # 迁移旧的 scan_folders.json 设置并删除残留
+        self._migrate_scan_folders()
+        # 应用运行时环境变量覆盖（不落盘），便于 n8n 等环境动态指定目录
+        self._apply_env_overrides()
+        # 应用调用方传入的运行时覆盖（最高优先级，不落盘）
+        if self._runtime_overrides:
+            self._apply_runtime_overrides(self._runtime_overrides)
     
     def get_default_config(self) -> Dict[str, Any]:
         """获取默认配置"""
         return {
             "version": "1.0",
+            "data_dir": str(self.config_dir),
             "source_folders": [],
             "target_folder": "",
             "sync_settings": {
@@ -62,14 +78,31 @@ class ConfigManager:
     def load_config(self) -> Dict[str, Any]:
         """加载配置文件"""
         if not self.config_path.exists():
-            # 配置文件不存在，创建默认配置
-            default_config = self.get_default_config()
-            self.save_config(default_config)
-            return default_config
+            # 无配置文件：若提供了运行时覆盖，则使用覆盖构建临时配置；否则报错
+            if self._runtime_overrides:
+                base = self.get_default_config()
+                # 将覆盖应用到内存配置副本
+                merged = base.copy()
+                try:
+                    srcs = self._runtime_overrides.get("sources")
+                    tgt = self._runtime_overrides.get("target")
+                    if isinstance(srcs, list):
+                        parts = [os.path.expanduser(str(p)) for p in srcs if str(p).strip()]
+                        merged["source_folders"] = [{"path": p, "enabled": True} for p in parts]
+                    if isinstance(tgt, str) and tgt.strip():
+                        merged["target_folder"] = os.path.expanduser(tgt)
+                except Exception:
+                    pass
+                return merged
+            raise RuntimeError(f"配置文件不存在: {self.config_path}")
         
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
+                if _YAML_AVAILABLE:
+                    config = yaml.safe_load(f)
+                else:
+                    import json as _json
+                    config = _json.load(f)
                 # 合并默认配置以确保所有必需的键都存在
                 default_config = self.get_default_config()
                 return self._merge_config(default_config, config)
@@ -96,12 +129,85 @@ class ConfigManager:
         try:
             config_to_save = config if config is not None else self.config
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(config_to_save, f, default_flow_style=False, 
-                         allow_unicode=True, indent=2)
+                if _YAML_AVAILABLE:
+                    yaml.dump(
+                        config_to_save,
+                        f,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                        indent=2,
+                    )
+                else:
+                    import json as _json
+                    _json.dump(config_to_save, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
             print(f"保存配置文件失败: {e}")
             return False
+
+    def _apply_env_overrides(self) -> None:
+        """基于环境变量覆盖运行时配置（不写回文件）
+
+        - READMESYNC_SOURCE_DIRS: 逗号分隔的源目录列表
+        - READMESYNC_TARGET_DIR: 目标目录
+        """
+        sources_env = os.getenv("READMESYNC_SOURCE_DIRS")
+        sources_json = os.getenv("READMESYNC_SOURCES_JSON")
+        target_env = os.getenv("READMESYNC_TARGET_DIR")
+        args_json = os.getenv("READMESYNC_ARGS_JSON")
+
+        # Highest priority: READMESYNC_ARGS_JSON with {"sources": [...], "target": "..."}
+        if args_json:
+            try:
+                import json as _json
+                data = _json.loads(args_json)
+                if isinstance(data, dict):
+                    srcs = data.get("sources")
+                    tgt = data.get("target")
+                    if isinstance(srcs, list):
+                        parts = [os.path.expanduser(str(p)) for p in srcs if str(p).strip()]
+                        self.config["source_folders"] = [{"path": p, "enabled": True} for p in parts]
+                    if isinstance(tgt, str) and tgt.strip():
+                        self.config["target_folder"] = os.path.expanduser(tgt)
+            except Exception:
+                pass
+
+        # Next: explicit JSON array for sources
+        elif sources_json:
+            try:
+                import json as _json
+                arr = _json.loads(sources_json)
+                if isinstance(arr, list):
+                    parts = [os.path.expanduser(str(p)) for p in arr if str(p).strip()]
+                    self.config["source_folders"] = [{"path": p, "enabled": True} for p in parts]
+            except Exception:
+                pass
+
+        # Finally: comma-separated list for sources
+        elif sources_env:
+            parts = [os.path.expanduser(p.strip()) for p in sources_env.split(',') if p.strip()]
+            self.config["source_folders"] = [{"path": p, "enabled": True} for p in parts]
+
+        # Target directory override
+        if target_env:
+            self.config["target_folder"] = os.path.expanduser(target_env)
+
+    def _apply_runtime_overrides(self, overrides: Dict[str, Any]) -> None:
+        """以最高优先级覆盖来源与目标（不写回文件）"""
+        try:
+            srcs = overrides.get("sources")
+            tgt = overrides.get("target")
+            if isinstance(srcs, list):
+                parts = [os.path.expanduser(str(p)) for p in srcs if str(p).strip()]
+                self.config["source_folders"] = [{"path": p, "enabled": True} for p in parts]
+            if isinstance(tgt, str) and tgt.strip():
+                self.config["target_folder"] = os.path.expanduser(tgt)
+        except Exception:
+            pass
+
+    def get_config_dir(self) -> str:
+        """返回配置目录绝对路径"""
+        return str(self.config_dir)
     
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置项（支持点号分隔的嵌套键）"""
@@ -131,57 +237,67 @@ class ConfigManager:
         current[keys[-1]] = value
         return self.save_config()
     
-    def load_scan_folders(self) -> Dict[str, Any]:
-        """加载扫描文件夹配置"""
-        if self.scan_folders_file.exists():
+    def _migrate_scan_folders(self):
+        """一次性迁移 scan_folders.json 到 config.yaml 并删除残留文件"""
+        if not self.scan_folders_file.exists():
+            return
+        try:
+            with open(self.scan_folders_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            # 无法解析则直接删除
             try:
-                with open(self.scan_folders_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
+                self.scan_folders_file.unlink()
+            except Exception:
                 pass
-        
-        # 返回默认扫描配置
-        return {
-            "source_folders": [
-                str(Path.home() / "Developer" / "Cloud" / "Dropbox" / "-WorkSpace-" / "Code" / "Area" / "Project" / "Application"),
-                str(Path.home() / "Developer" / "Code" / "Local" / "Scripts")
-            ],
-            "target_folder": str(Path.home() / "Developer" / "Code" / "Local" / "Temp" / "[readme]"),
-            "file_patterns": [
-                "README.md",
-                "readme.md",
-                "README.txt",
-                "readme.txt"
-            ],
-            "exclude_patterns": [
-                "*.git*",
-                "node_modules",
-                "__pycache__",
-                "*.pyc",
-                ".venv",
-                "venv"
-            ]
-        }
+            return
+
+        # 迁移 source_folders -> config.source_folders (带 enabled 字段)
+        migrated_sources = []
+        for p in data.get("source_folders", []):
+            migrated_sources.append({"path": os.path.expanduser(p), "enabled": True})
+        if migrated_sources:
+            self.config["source_folders"] = migrated_sources
+
+        # 迁移 target_folder
+        if data.get("target_folder"):
+            self.config["target_folder"] = os.path.expanduser(data["target_folder"])
+
+        # 迁移 exclude_patterns -> exclusions
+        if data.get("exclude_patterns"):
+            self.config["exclusions"] = data.get("exclude_patterns", [])
+
+        self.save_config(self.config)
+        # 删除旧文件避免残留
+        try:
+            self.scan_folders_file.unlink()
+        except Exception:
+            pass
     
     def get_source_folders(self) -> List[str]:
-        """获取源文件夹列表"""
-        scan_config = self.load_scan_folders()
-        return scan_config.get("source_folders", [])
+        """获取源文件夹列表（字符串路径）"""
+        folders = self.get("source_folders", [])
+        # 兼容纯字符串列表与 dict 列表
+        normalized = []
+        for item in folders:
+            if isinstance(item, str):
+                normalized.append(os.path.expanduser(item))
+            elif isinstance(item, dict) and item.get("path"):
+                normalized.append(os.path.expanduser(item["path"]))
+        return normalized
     
     def get_target_folder(self) -> str:
-        """获取目标文件夹"""
-        scan_config = self.load_scan_folders()
-        return scan_config.get("target_folder", "")
+        """获取目标文件夹（来自 config.yaml）"""
+        target = self.get("target_folder", "")
+        return os.path.expanduser(target) if target else ""
     
     def get_file_patterns(self) -> List[str]:
-        """获取文件模式列表"""
-        scan_config = self.load_scan_folders()
-        return scan_config.get("file_patterns", [])
+        """获取文件模式列表（无强制使用，仅保留向后兼容）"""
+        return self.get("file_patterns", ["README.md", "readme.md"]) or ["README.md", "readme.md"]
     
     def get_exclude_patterns(self) -> List[str]:
-        """获取排除模式列表"""
-        scan_config = self.load_scan_folders()
-        return scan_config.get("exclude_patterns", [])
+        """获取排除模式列表（来自 config.yaml 的 exclusions）"""
+        return self.get("exclusions", [])
     
     def add_source_folder(self, folder_path: str, enabled: bool = True) -> bool:
         """添加源文件夹"""
@@ -243,9 +359,8 @@ class ConfigManager:
         return self.set("target_folder", folder_path)
     
     def get_target_folder_from_config(self) -> str:
-        """从主配置文件获取目标文件夹"""
-        target = self.get("target_folder", "")
-        return os.path.expanduser(target) if target else ""
+        """兼容方法：等同于 get_target_folder"""
+        return self.get_target_folder()
     
     def is_excluded(self, path: str) -> bool:
         """检查路径是否被排除"""
@@ -339,4 +454,8 @@ class ConfigManager:
     def print_config(self):
         """打印当前配置"""
         print("当前配置:")
-        print(yaml.dump(self.config, default_flow_style=False, allow_unicode=True, indent=2))
+        if _YAML_AVAILABLE:
+            print(yaml.dump(self.config, default_flow_style=False, allow_unicode=True, indent=2))
+        else:
+            import json as _json
+            print(_json.dumps(self.config, ensure_ascii=False, indent=2))

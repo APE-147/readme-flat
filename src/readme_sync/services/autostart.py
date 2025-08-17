@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
+from .config import ConfigManager
 
 
 class AutoStartManager:
@@ -54,13 +55,9 @@ class AutoStartManager:
             return None
     
     def _get_data_dir(self) -> str:
-        """获取数据目录路径"""
-        project_data_dir = os.getenv('PROJECT_DATA_DIR')
-        if project_data_dir:
-            return project_data_dir
-        else:
-            # 使用默认的新数据目录结构
-            return str(self.home_dir / "Developer" / "Code" / "Data" / "srv" / "readme_flat")
+        """获取数据目录路径（从配置目录推断）"""
+        cfg = ConfigManager()
+        return cfg.get_config_dir()
     
     def create_plist(self) -> bool:
         """创建launchd plist文件"""
@@ -114,8 +111,6 @@ class AutoStartManager:
     <dict>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:{os.path.dirname(self.readme_sync_path)}</string>
-        <key>PROJECT_DATA_DIR</key>
-        <string>{self._get_data_dir()}</string>
     </dict>
 </dict>
 </plist>"""

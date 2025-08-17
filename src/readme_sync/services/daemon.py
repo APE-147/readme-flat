@@ -22,13 +22,9 @@ class DaemonManager:
         """初始化守护进程管理器"""
         self.config_path = config_path
         
-        # 守护进程相关文件路径
-        project_data_dir = os.getenv('PROJECT_DATA_DIR')
-        if project_data_dir:
-            self.daemon_dir = Path(project_data_dir)
-        else:
-            # 使用默认的新数据目录结构
-            self.daemon_dir = Path.home() / "Developer" / "Code" / "Data" / "srv" / "readme_flat"
+        # 守护进程相关文件路径：严格从配置目录读取
+        cfg = ConfigManager(config_path)
+        self.daemon_dir = Path(cfg.get_config_dir())
         self.daemon_dir.mkdir(parents=True, exist_ok=True)
         
         self.pid_file = self.daemon_dir / "daemon.pid"
@@ -44,6 +40,28 @@ class DaemonManager:
         
         # 数据库管理器
         self.db_manager = None
+
+    def clean_state(self) -> None:
+        """清理所有与守护进程相关的状态文件，确保无残留"""
+        # 基本文件
+        try:
+            if self.pid_file.exists():
+                self.pid_file.unlink()
+            if self.status_file.exists():
+                self.status_file.unlink()
+            if self.log_file.exists():
+                self.log_file.unlink()
+        except Exception as e:
+            print(f"清理基础状态文件失败: {e}")
+
+        # 额外：清理可能由 launchd 生成的日志文件
+        for name in ("launchd.out", "launchd.err"):
+            p = self.daemon_dir / name
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
     
     def start(self, detach: bool = True) -> bool:
         """启动守护进程"""
@@ -83,7 +101,7 @@ class DaemonManager:
                 os.kill(pid, signal.SIGKILL)
                 time.sleep(1)
             
-            # 清理文件
+            # 清理文件（包含日志，确保无残留）
             self._cleanup_files()
             
             print(f"守护进程已停止 (PID: {pid})")
@@ -373,6 +391,9 @@ class DaemonManager:
                 self.pid_file.unlink()
             if self.status_file.exists():
                 self.status_file.unlink()
+            # 额外清理日志，确保无残留
+            if self.log_file.exists():
+                self.log_file.unlink()
         except Exception as e:
             print(f"清理文件失败: {e}")
     

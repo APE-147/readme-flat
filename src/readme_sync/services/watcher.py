@@ -239,7 +239,7 @@ class ReadmeFileHandler(FileSystemEventHandler):
                 # 更新映射信息
                 self.sync_engine.db.add_file_mapping(
                     source_path, target_path,
-                    mapping['project_name'], mapping['target_filename']
+                    mapping.get('project_name', 'Unknown'), mapping.get('renamed_filename') or os.path.basename(target_path)
                 )
             else:
                 print(f"[实时同步] 根据智能策略，跳过反向同步: {target_path}")

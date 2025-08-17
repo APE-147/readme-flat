@@ -7,7 +7,7 @@ PROJECT_DIR=$(get_project_data "$slug")
 
 # 项目配置
 PROJECT_NAME="readme_sync"
-SCRIPT_DIR="$HOME/Developer/Code/Scripts/desktop/readme-flat"
+SCRIPT_DIR="$HOME/Code/Scripts/desktop/readme-flat"
 PYTHON_BIN="$HOME/Developer/Python/miniconda/envs/System/bin/python"
 
 # 确保项目数据目录存在

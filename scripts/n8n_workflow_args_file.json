@@ -1,0 +1,241 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "functionCode": "const sources = Object.entries($json)\n  .filter(([k,v]) => k && k.toString().startsWith('source') && v)\n  .map(([,v]) => v);\nconst target = $json.target || '';\nconst args = { sources, target };\nreturn { json: { ...$json, argsJson: JSON.stringify(args), json: { argsJson: JSON.stringify(args) } } };"
+        },
+        "id": "477f1af2-8b6b-451b-81d3-d5153298569b",
+        "name": "Build Args JSON",
+        "type": "n8n-nodes-base.functionItem",
+        "typeVersion": 1,
+        "position": [
+          -1008,
+          2992
+        ]
+      },
+      {
+        "parameters": {
+          "command": "=printf '%s' '{{ $json.json.argsJson }}' > /tmp/args.json "
+        },
+        "id": "d99916e0-fabb-419b-8cc7-7e2428df97a8",
+        "name": "Write Args File",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -784,
+          2992
+        ]
+      },
+      {
+        "parameters": {
+          "command": "cat /tmp/args.json"
+        },
+        "id": "564a36b7-fe13-4874-8a0f-8edea8d51da2",
+        "name": "Check Args File",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -592,
+          3264
+        ]
+      },
+      {
+        "parameters": {
+          "keepOnlySet": true,
+          "values": {
+            "string": [
+              {
+                "name": "source1",
+                "value": "/Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts"
+              },
+              {
+                "name": "source2"
+              },
+              {
+                "name": "source3"
+              },
+              {
+                "name": "target",
+                "value": "/Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/file/APP/Obsidian/Remote-temp/[readme]"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "c2e63769-a0cf-430d-8b5d-a86d68878f32",
+        "name": "readme_Paths",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 2,
+        "position": [
+          -1232,
+          2992
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode sync --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
+        },
+        "id": "46600218-374e-4417-9d4a-c9273bc69e9e",
+        "name": "readme_Sync",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -496,
+          2752
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode clean --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
+        },
+        "id": "3d37f5f0-9af6-47b0-9d78-77f93b0197da",
+        "name": "readme_Clean",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -496,
+          2912
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode reverse --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
+        },
+        "id": "b3d9d6b0-2b92-4f40-9b7a-9e0b0c2a9f1a",
+        "name": "readme_Reverse (Write Back)",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -304,
+          2912
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode stop --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
+        },
+        "id": "bc378408-bec7-4b0e-92ce-325772c15bb7",
+        "name": "readme_Stop",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -496,
+          3072
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py --mode reset --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml --args-file /tmp/args.json"
+        },
+        "id": "3a022fcf-8cac-4b8a-8528-ec4623ed6f62",
+        "name": "readme_Reset",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -304,
+          3072
+        ]
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "seconds",
+                "secondsInterval": 10
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -912,
+          2752
+        ],
+        "id": "7f7d1d01-6487-49bc-8cbe-c8277b51a00f",
+        "name": "Per 10s"
+      }
+    ],
+    "connections": {
+      "Build Args JSON": {
+        "main": [
+          [
+            {
+              "node": "Write Args File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Write Args File": {
+        "main": [
+          [
+            {
+              "node": "readme_Sync",
+              "type": "main",
+              "index": 0
+            },
+          {
+            "node": "readme_Clean",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "readme_Reverse (Write Back)",
+            "type": "main",
+            "index": 0
+          },
+            {
+              "node": "readme_Stop",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Check Args File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "readme_Paths": {
+        "main": [
+          [
+            {
+              "node": "Build Args JSON",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "readme_Stop": {
+        "main": [
+          [
+            {
+              "node": "readme_Reset",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Per 10s": {
+        "main": [
+          [
+            {
+              "node": "readme_Sync",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "meta": {
+      "instanceId": "ad55c78445e196c7ac2248ec330e3883dfb5771bc7ab3e4c1b06e7f53395db24"
+    }
+  }

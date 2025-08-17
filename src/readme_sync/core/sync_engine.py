@@ -120,6 +120,13 @@ class SyncEngine:
         if orphaned > 0:
             print(f"清理了 {orphaned} 个孤立映射")
         
+        # 5. 反向同步一遍（处理用户在目标的修改）
+        try:
+            reverse = self.reverse_sync_from_target()
+            results['reverse_synced'] += reverse.get('synced', 0)
+        except Exception as e:
+            print(f"执行反向同步阶段失败: {e}")
+        
         print(f"同步完成: 扫描 {results['scanned']}, 正向同步 {results['synced']}, 反向同步 {results['reverse_synced']}, 冲突 {results['conflicts']}, 错误 {results['errors']}")
         return results
     
@@ -504,8 +511,34 @@ class SyncEngine:
                     # 更新映射
                     self.db.update_target_path(mapping['target_path'], target_path)
                 else:
-                    results['no_mapping'] += 1
-                    continue
+                    # 通过文件名匹配映射（忽略路径）
+                    from os.path import basename
+                    fname = basename(target_path)
+                    mapping = self.db.find_mapping_by_filename(fname)
+                    if mapping:
+                        self.db.update_target_path(mapping['target_path'], target_path)
+                    else:
+                        # 最后回退：扫描源目录，按生成的目标文件名比对，建立新映射
+                        try:
+                            expected = fname
+                            candidates = self.scanner.scan_all_sources()
+                            matched = None
+                            for fi in candidates:
+                                if fi.get('target_filename') == expected:
+                                    matched = fi
+                                    break
+                            if matched:
+                                source_path = matched['source_path']
+                                project_name = matched['project_name']
+                                # 建立/更新映射关系
+                                self.db.add_file_mapping(source_path, target_path, project_name, expected)
+                                mapping = self.db.get_file_mapping(source_path)
+                            else:
+                                results['no_mapping'] += 1
+                                continue
+                        except Exception:
+                            results['no_mapping'] += 1
+                            continue
             
             # 检查源文件是否存在
             source_path = mapping['source_path']
@@ -513,29 +546,126 @@ class SyncEngine:
                 print(f"源文件不存在，跳过: {source_path}")
                 continue
             
-            # 使用智能合并策略判断是否需要反向同步
+            # 使用更稳健的判定：目标较新且内容不同 -> 反向
             try:
-                sync_action = self._determine_sync_action(source_path, target_path, mapping)
-                
-                if sync_action == 'target_to_source':
-                    # 执行反向同步
-                    result = self._perform_reverse_sync(source_path, target_path, mapping)
-                    if result == 'reverse_synced':
-                        results['synced'] += 1
-                        print(f"智能反向同步: {target_path} -> {source_path}")
+                if not self._can_sync(source_path) or not self._acquire_sync_lock(source_path):
+                    continue
+                try:
+                    tolerance = self.config.get_tolerance_seconds()
+                    s_m = os.path.getmtime(source_path)
+                    t_m = os.path.getmtime(target_path)
+                    s_hash = self.db.get_file_hash(source_path)
+                    t_hash = self.db.get_file_hash(target_path)
+                    if t_hash != s_hash and (t_m - s_m) > tolerance:
+                        result = self._perform_reverse_sync(source_path, target_path, mapping)
+                        if result == 'reverse_synced':
+                            results['synced'] += 1
+                            print(f"智能反向同步: {target_path} -> {source_path}")
+                        else:
+                            print(f"反向同步失败: {target_path}")
+                            results['errors'] += 1
                     else:
-                        print(f"反向同步失败: {target_path}")
-                        results['errors'] += 1
-                elif sync_action == 'no_sync':
-                    print(f"检测到目标文件被手动修改，保持现状: {target_path}")
-                else:
-                    print(f"根据智能策略，不执行反向同步: {target_path} (动作: {sync_action})")
+                        # 回退到原有策略
+                        sync_action = self._determine_sync_action(source_path, target_path, mapping)
+                        if sync_action == 'target_to_source':
+                            result = self._perform_reverse_sync(source_path, target_path, mapping)
+                            if result == 'reverse_synced':
+                                results['synced'] += 1
+                                print(f"智能反向同步: {target_path} -> {source_path}")
+                            else:
+                                print(f"反向同步失败: {target_path}")
+                                results['errors'] += 1
+                        elif sync_action == 'no_sync':
+                            print(f"检测到目标文件被手动修改，保持现状: {target_path}")
+                        else:
+                            print(f"根据智能策略，不执行反向同步: {target_path} (动作: {sync_action})")
+                finally:
+                    self._release_sync_lock(source_path)
             
             except Exception as e:
                 print(f"反向同步失败 {target_path}: {e}")
                 results['errors'] += 1
         
         print(f"反向同步完成: 扫描 {results['scanned']}, 同步 {results['synced']}, 无映射 {results['no_mapping']}, 错误 {results['errors']}")
+        return results
+
+    def reverse_all(self, force: bool = False) -> Dict[str, int]:
+        """从目标文件夹反向同步到源（可选强制）
+
+        - 当 force=True 时，只要目标与源内容不同，一律执行 target->source。
+        - 否则遵循智能策略（_determine_sync_action）。
+        """
+        results = {
+            'scanned': 0,
+            'synced': 0,
+            'errors': 0,
+            'no_mapping': 0
+        }
+        target_files = self.scanner.scan_target_folder()
+        results['scanned'] = len(target_files)
+        from os.path import basename
+
+        for tf in target_files:
+            target_path = tf['target_path']
+            try:
+                mapping = self.db.find_mapping_by_target(target_path)
+                if not mapping:
+                    file_hash = self.db.get_file_hash(target_path)
+                    mapping = self.db.find_mapping_by_hash(file_hash)
+                    if mapping:
+                        self.db.update_target_path(mapping['target_path'], target_path)
+                    else:
+                        # 文件名匹配
+                        mapping = self.db.find_mapping_by_filename(basename(target_path))
+                        if mapping:
+                            self.db.update_target_path(mapping['target_path'], target_path)
+                if not mapping:
+                    results['no_mapping'] += 1
+                    continue
+
+                source_path = mapping['source_path']
+                if not os.path.exists(source_path) or not os.path.exists(target_path):
+                    continue
+
+                # 加锁防止与正向同步竞争
+                if not self._can_sync(source_path):
+                    continue
+                if not self._acquire_sync_lock(source_path):
+                    continue
+                try:
+                    if force:
+                        s_hash = self.db.get_file_hash(source_path)
+                        t_hash = self.db.get_file_hash(target_path)
+                        if s_hash != t_hash:
+                            r = self._perform_reverse_sync(source_path, target_path, mapping)
+                            if r == 'reverse_synced':
+                                results['synced'] += 1
+                        continue
+
+                    # 简化且可靠的目标优先策略：当目标较新且内容不同则反向
+                    tolerance = self.config.get_tolerance_seconds()
+                    s_m = os.path.getmtime(source_path)
+                    t_m = os.path.getmtime(target_path)
+                    s_hash = self.db.get_file_hash(source_path)
+                    t_hash = self.db.get_file_hash(target_path)
+                    if t_hash != s_hash and (t_m - s_m) > tolerance:
+                        r = self._perform_reverse_sync(source_path, target_path, mapping)
+                        if r == 'reverse_synced':
+                            results['synced'] += 1
+                    else:
+                        # 回退到原有智能策略
+                        action = self._determine_sync_action(source_path, target_path, mapping)
+                        if action == 'target_to_source':
+                            r = self._perform_reverse_sync(source_path, target_path, mapping)
+                            if r == 'reverse_synced':
+                                results['synced'] += 1
+                finally:
+                    self._release_sync_lock(source_path)
+                # 其余保持现状
+            except Exception as e:
+                print(f"反向同步（force={force}) 失败 {target_path}: {e}")
+                results['errors'] += 1
+
         return results
     
     def force_sync_target_to_source(self, target_path: str) -> bool:

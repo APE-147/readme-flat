@@ -6,6 +6,7 @@ import os
 import hashlib
 import time
 from pathlib import Path
+from .config import ConfigManager
 from typing import List, Dict, Optional, Tuple
 
 
@@ -15,13 +16,9 @@ class DatabaseManager:
     def __init__(self, db_path: str = None):
         """初始化数据库"""
         if db_path is None:
-            # 使用新的数据目录路径
-            project_data_dir = os.getenv('PROJECT_DATA_DIR')
-            if project_data_dir:
-                config_dir = Path(project_data_dir)
-            else:
-                # 使用默认的新数据目录结构
-                config_dir = Path.home() / "Developer" / "Code" / "Data" / "srv" / "readme_flat"
+            # 统一从配置文件目录读取数据库位置
+            cfg = ConfigManager()
+            config_dir = Path(cfg.get_config_dir())
             config_dir.mkdir(parents=True, exist_ok=True)
             db_path = config_dir / "database.db"
         
@@ -130,6 +127,24 @@ class DatabaseManager:
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def find_mapping_by_filename(self, renamed_filename: str) -> Optional[Dict]:
+        """根据重命名后的目标文件名查找映射（忽略路径，仅匹配文件名）"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(
+                    "SELECT * FROM file_mappings WHERE lower(renamed_filename) = lower(?)",
+                    (renamed_filename,)
+                )
+                rows = cursor.fetchall()
+                if not rows:
+                    return None
+                # 如果有多个，返回最新更新的一条
+                rows = sorted(rows, key=lambda r: r["updated_at"] if "updated_at" in r.keys() else 0, reverse=True)
+                return dict(rows[0])
+        except Exception:
+            return None
     
     def update_target_path(self, old_target: str, new_target: str) -> bool:
         """更新目标文件路径（用于处理移动）"""
