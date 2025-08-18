@@ -193,9 +193,28 @@ class SyncEngine:
                             new_filename = os.path.basename(target_path)
                             
                             if old_filename != new_filename:
-                                # 文件名变化，需要移动
-                                print(f"项目名称变化，移动文件: {mapping['target_path']} -> {target_path}")
-                                self._move_target_file(mapping['target_path'], target_path)
+                                # 文件名变化
+                                try:
+                                    src_size = os.path.getsize(source_path) if os.path.exists(source_path) else -1
+                                except Exception:
+                                    src_size = -1
+                                if src_size == 0:
+                                    # 源文件为空：避免因为空文件（哈希相同）误移已有文件，改为新建目标文件
+                                    print(
+                                        f"源文件为空，避免误移。创建新目标文件: {target_path} 并保留原文件"
+                                    )
+                                    # 确保目录存在
+                                    target_dir = os.path.dirname(target_path)
+                                    target_folder = self.config.get_target_folder()
+                                    if target_dir != target_folder:
+                                        os.makedirs(target_dir, exist_ok=True)
+                                    shutil.copy2(source_path, target_path)
+                                    # 更新映射到新目标
+                                    self.db.update_target_path(mapping['target_path'], target_path)
+                                else:
+                                    # 非空：按原逻辑移动
+                                    print(f"项目名称变化，移动文件: {mapping['target_path']} -> {target_path}")
+                                    self._move_target_file(mapping['target_path'], target_path)
                             else:
                                 # 仅路径变化（用户手动移动），保持现有位置，更新映射
                                 print(f"保持用户的文件组织结构: {mapping['target_path']}")
@@ -461,14 +480,12 @@ class SyncEngine:
             print(f"移动文件失败: {e}")
     
     def _find_existing_target_file(self, source_path: str, target_filename: str) -> Optional[str]:
-        """在目标文件夹中递归搜索是否存在对应的文件（按文件名匹配为主）"""
+        """在目标文件夹中递归搜索是否存在对应的文件
+
+        只按目标“文件名”匹配，避免因为内容哈希相同（例如 0 字节文件）而误将不同项目视为同一文件。
+        """
         target_folder = self.config.get_target_folder()
         if not target_folder or not os.path.exists(target_folder):
-            return None
-        
-        # 获取源文件的哈希值用于匹配
-        source_hash = self.db.get_file_hash(source_path)
-        if not source_hash:
             return None
 
         # 仅文件名（扁平化比较）
@@ -480,20 +497,15 @@ class SyncEngine:
             for file in files:
                 if file.lower().endswith('.md'):
                     file_path = os.path.join(root, file)
-                    # 方法1: 文件名精确匹配（扁平化）
+                    # 文件名精确匹配（扁平化）
                     if file == base_target_name:
                         return file_path
-                    
-                    # 方法2: 通过文件哈希值匹配（内容相同）
-                    file_hash = self.db.get_file_hash(file_path)
-                    if file_hash and file_hash == source_hash:
-                        return file_path
-                    
-                    # 方法3: 基名匹配（去扩展名后相等）
+
+                    # 基名匹配（去扩展名后相等）
                     base_file = os.path.splitext(file)[0].lower()
                     if base_target_noext == base_file:
                         return file_path
-        
+
         return None
     
     def reverse_sync_from_target(self) -> Dict[str, int]:

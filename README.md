@@ -3,6 +3,23 @@
 ## 项目概述
 README Sync Manager 是一个用于集中管理和同步多个项目 README 文件的工具。它可以自动扫描指定目录下的所有 README 文件，并将它们同步到一个集中的目标目录，便于在 Obsidian 等知识管理工具中统一查看和编辑。
 
+## 最近更新
+
+- 0字节文件也会同步：移除了基于内容哈希的目标匹配捷径，避免不同项目的空文件（MD5 相同）被误认为同一文件，确保新建的空 README.md 也会在目标端创建对应文件。
+- 更稳健的目标文件匹配：仅按“目标文件名/基名”匹配，减少误判；当源文件为空且检测到文件名变化时，创建新目标文件并更新映射，而不是移动旧文件。
+- 运行示例（Conda 环境）：推荐使用 `conda run -n System` 直接在指定环境中执行同步命令。
+- 配置加载提示：若环境缺少 PyYAML，YAML 配置会被误按 JSON 解析而失败（如出现“Expecting value: line 1 column 1”），需安装 `pyyaml` 或正确设置 `READMESYNC_CONFIG`。
+
+### 快速运行（Conda System 环境）
+
+```bash
+conda run -n System \
+  python /Users/niceday/Developer/Cloud/Dropbox/-Code-/Scripts/desktop/readme-flat/scripts/n8n_runner.py \
+  --mode sync \
+  --config /Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml \
+  --args-file /tmp/args.json
+```
+
 ## 主要功能
 
 - 📁 **自动扫描**: 自动扫描配置的源目录，查找所有 README 文件
@@ -440,3 +457,26 @@ readme-sync move-unlinked
 3. **智能同步**: 使用 `smart-sync` 可以安全地将 Obsidian 中的修改同步回源文件
 4. **定期清理**: 守护进程会自动清理孤立映射，保持数据库整洁
 5. **性能优化**: 使用 MD5 哈希值比较，只同步真正有变化的文件
+
+## 故障排查（FAQ）
+
+- 配置加载报错：`Expecting value: line 1 column 1 (char 0)`
+  - 说明：环境缺少 PyYAML 时，会退回尝试用 JSON 解析 YAML，导致失败。
+  - 解决：`pip install pyyaml` 或 `pip install -r requirements.txt`；必要时显式指定配置文件：
+    ```bash
+    export READMESYNC_CONFIG=/Users/niceday/Developer/Cloud/Dropbox/-Code-/Data/srv/readme_flat/config.yaml
+    ```
+- 新增的 README.md 是 0 字节但未在目标出现
+  - 现已支持：空文件会被同步。若仍未出现，检查目标目录中是否已有重名文件造成“已存在”的判定。
+  - 如果历史上因空文件哈希误匹配导致错位，可在目标目录查看 `unlinked/` 子文件夹，按需手动归档或清理。
+- 如何在指定 Conda 环境运行
+  - 推荐：
+    ```bash
+    conda run -n System python scripts/n8n_runner.py --mode sync --config /abs/path/to/config.yaml --args-file /tmp/args.json
+    ```
+  - 或先激活环境后运行：
+    ```bash
+    source ~/miniconda3/etc/profile.d/conda.sh
+    conda activate System
+    python scripts/n8n_runner.py --mode sync --config /abs/path/to/config.yaml --args-file /tmp/args.json
+    ```
